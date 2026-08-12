@@ -33,6 +33,7 @@ from RsaCtfTool.lib.number_theory import (
     ilogb,
     mlucas,
     iroot,
+    mulmod,
 )
 from RsaCtfTool.lib.number_theory import invmod, introot, find_period, is_prime, legendre, tonelli
 
@@ -95,7 +96,7 @@ def strong_pseudoprime(N):
             continue
         for _ in range(e):
             prev = b
-            b = (b * b) % N
+            b = powmod(b,2,N)
             if b == 1:
                 p = gcd(prev - 1, N)
                 q = gcd(prev + 1, N)
@@ -134,7 +135,7 @@ def close_factor(n, b, progress=True):
             r = trivial_factorization_with_n_phi(n, phi)
             if r is not None:
                 return r
-        mu = (mu * fac) % n
+        mu = mulmod(mu, fac, n)
 
 
 def prime_base_collision(n):
@@ -148,13 +149,13 @@ def prime_base_collision(n):
     while True:
         lp = base[-1]
         for i in range(start, n):
-            i2N = pow(i, 2, n)
+            i2N = powmod(i, 2, n)
             if i2N == basej2N[-1]:
                 p = gcd(i - lp, n)
                 if 1 < p < n:
                     return p, n // p
         base.append(next_prime(lp))
-        basej2N.append(pow(base[-1], 2, n))
+        basej2N.append(powmod(base[-1], 2, n))
 
 
 def _collect_dixon_relations(n, base, t, n_needed, progress):
@@ -240,7 +241,7 @@ def _try_smooth_dependency(rows, relations, base, t, n):
             y = 1
             for j, p in enumerate(base):
                 if total_exp[j]:
-                    y = (y * pow(p, total_exp[j] // 2, n)) % n
+                    y = (y * powmod(p, total_exp[j] // 2, n)) % n
             if x != y and x != n - y:
                 g = gcd(x - y, n)
                 if 1 < g < n:
@@ -643,7 +644,7 @@ def hart(N):
     i = 1
     while not is_square(m):
         s = isqrt(N * i) + 1
-        m = pow(s, 2, N)
+        m = powmod(s, 2, N)
         i += 1
     t = isqrt(m)
     g = gcd(s - t, N)
