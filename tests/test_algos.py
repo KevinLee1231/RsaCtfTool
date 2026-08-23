@@ -136,7 +136,7 @@ class TestLehman:
     """Tests for lehman factorization."""
 
     def test_lehman_invalid_congruence(self):
-        n = 15  # 15 % 4 == 3
+        n = 6  # 6 % 4 == 2
         with pytest.raises(FactorizationError):
             lehman(n)
 
@@ -178,7 +178,7 @@ class TestSQUFOF:
         assert f1 * f2 == n
 
     def test_squfof_invalid_congruence(self):
-        n = 15
+        n = 6
         with pytest.raises(FactorizationError):
             SQUFOF(n)
 
@@ -199,7 +199,7 @@ class TestLehmerMachine:
     """Tests for lehmer_machine factorization."""
 
     def test_lehmer_machine_invalid_congruence(self):
-        n = 15
+        n = 6
         with pytest.raises(FactorizationError):
             lehmer_machine(n)
 
@@ -208,7 +208,7 @@ class TestFactor2PN:
     """Tests for factor_2PN factorization."""
 
     def test_factor_2pn_basic(self):
-        p, q = 41, 43
+        p, q = 41, 61
         P = 3
         n = p * q
         result = factor_2PN(n, P)
@@ -234,9 +234,10 @@ class TestWiener:
     """Tests for wiener attack."""
 
     def test_wiener_small(self):
-        p, q = 61, 53
+        p, q = 1009, 1013
         n = p * q
-        e = 17
+        d = 5
+        e = pow(d, -1, (p - 1) * (q - 1))
         result = wiener(n, e, progress=False)
         assert result is not None
         f1, f2 = result
