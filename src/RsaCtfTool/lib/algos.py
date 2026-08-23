@@ -4,6 +4,7 @@
 import sys
 import time
 import math
+from array import array
 from random import randint
 from tqdm import tqdm
 from RsaCtfTool.lib.exceptions import FactorizationError
@@ -334,13 +335,19 @@ def _qs_sieve_interval(n, base, sqrt_map, M, progress=True):
 
     # log2|Q(X+off)| = log2|off| + log2(X+off+X). The second term varies by
     # less than 0.001 bits over the whole interval, so a constant plus a
-    # lookup table on |off| approximates it without any per-position
+    # per-|off| log term approximates it without any per-position
     # big-integer arithmetic (error <= 1 bit, absorbed by the margin).
     # off == 0 with X*X == n would make Q vanish; its target goes to -inf.
     two_x_bits = float((2 * X).bit_length())
-    log_off = [float("-inf")] + [math.log2(v) for v in range(1, M + 1)]
-    log_q = [log_off[abs(off)] + two_x_bits for off in range(-M, M + 1)]
-    logs = [0.0] * size
+    # Symmetry |off| on both interval halves lets one half table serve the
+    # whole range; array('d') keeps it as packed C doubles.
+    half = array("d", (math.log2(v) + two_x_bits for v in range(1, M + 1)))
+    log_q = array("d")
+    log_q.extend(reversed(half))          # off = -M .. -1
+    log_q.append(float("-inf"))           # off == 0: Q vanishes when X*X == n
+    log_q.extend(half)                    # off = 1 .. M
+    del half
+    logs = array("d", [0.0]) * size
 
     # Accumulate log2(p) at every position where p divides Q(X+off).
     # Roots were precomputed by _build_qs_factor_base: x ≡ ±r mod p for
@@ -361,7 +368,8 @@ def _qs_sieve_interval(n, base, sqrt_map, M, progress=True):
                 # index i corresponds to off = i - M and x = X + off, so
                 # x ≡ r (mod p^k)  ⇔  i ≡ r - X + M (mod p^k).
                 start = (r - X + M) % mod
-                logs[start::mod] = [v + lp for v in logs[start::mod]]
+                seg = logs[start::mod]
+                logs[start::mod] = array("d", [v + lp for v in seg])
             nxt = []
             for r in rs:
                 for t_lift in range(p):
@@ -418,6 +426,9 @@ def quadratic_sieve(n, B=None, M=None, progress=True, n_extra=10, max_retries=6)
         return 2, n // 2
     if is_prime(n):
         return None
+    if is_square(n):
+        r = isqrt(n)
+        return r, r
 
     if B is None:
         ln_n = log(n)
