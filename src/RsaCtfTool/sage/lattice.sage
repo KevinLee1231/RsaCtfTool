@@ -1,35 +1,59 @@
-from gmpy2 import isqrt, remove
+#!/usr/bin/env sage
+
+# Factoring with high bits known (Coppersmith). Given n and nearp, an
+# approximation to one factor of n whose high bits are correct, recover the
+# exact factor. Replaces the previous gmpy2.remove-based parameter derivation,
+# which always produced t = k = 0 and crashed on an empty lattice matrix.
+# reference https://facthacks.cr.yp.to/lattice.html
+
 import sys
 
 
-def lattice(n, nearp, howclose, t, k):
-    """ source https://facthacks.cr.yp.to/lattice.html """
-    R.<x> = PolynomialRing(ZZ)
-    f = howclose * x + nearp
-    M = matrix(t)
-    for i in range(t):
-        # f = (f^i*n^max(k-i,0))
-        # print(f,dir(f))
-        # M[i] = (f^i*n^max(k-i,0)).coeffs()+[0]*(t-1-i)
-        M[i] = (f ^ i * n ^ max(k - i, 0)).coefficients() + [0] * (t - 1 - i)
+def lattice(n, nearp):
+    """Return [g, n // g] when a nontrivial factor is recovered, else []."""
+    n = Integer(n)
+    nearp = Integer(nearp)
 
-    M = M.LLL()
-    Q = sum(z * (x / howclose) ^ i for i, z in enumerate(M[0]))
-    for r, multiplicty in Q.roots():
-        if nearp + r > 0:
-            g = gcd(n, nearp + r)
-            if g > 1: return [g, n / g]
+    # Quick path: the approximation may already be an exact factor or share
+    # a nontrivial divisor with n.
+    g = gcd(n, nearp)
+    if 1 < g < n:
+        return [int(g), int(n // g)]
+
+    nbits = n.nbits()
+    pbits = nearp.nbits()
+    # Conservative size ratio: a bit length only bounds the magnitude from
+    # above, so use the guaranteed lower bound of the factor's size. This
+    # keeps the small_roots precondition "a factor of size >= n^beta exists"
+    # mathematically valid for every key.
+    beta = QQ(pbits - 1) / QQ(nbits)
+    if beta <= 0 or beta >= 1:
+        return []
+
+    # Coppersmith univariate: f = x + nearp has the small root p - nearp
+    # modulo the target factor. The actual error size is unknown and the
+    # window shrinks with beta (factor imbalance), so sweep the bound upward.
+    # A reduced epsilon deepens the lattice and widens the practical window
+    # at the cost of LLL time.
+    epsilon = beta / 16
+    max_bits = max(int((beta * beta - epsilon) * nbits * 0.95), 1)
+
+    R.<x> = PolynomialRing(Zmod(n))
+    f = x + nearp
+    bits = min(32, max_bits)
+    while True:
+        for r in f.small_roots(X=Integer(2) ** bits, beta=beta, epsilon=epsilon):
+            g = gcd(n, nearp + Integer(r))
+            if 1 < g < n:
+                return [int(g), int(n // g)]
+        if bits >= max_bits:
+            break
+        bits = min(bits * 2, max_bits)
     return []
 
 
-def get_params():
-    nearp = int(sys.argv[2])
-    n = int(sys.argv[1])
-    a, b = remove(nearp, 10)
-    howclose = int(10 ** b)
-    t = howclose // 200
-    k = howclose // 500
-    return (n, nearp, howclose, t, k)
-
-
-print(lattice(*get_params()))
+if __name__ in {"__main__", "sage.all"}:
+    try:
+        print(lattice(int(sys.argv[1]), int(sys.argv[2])))
+    except Exception:
+        print([])

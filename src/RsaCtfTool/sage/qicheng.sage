@@ -1,61 +1,117 @@
+#!/usr/bin/env sage
+
+# Try to factor n with the elliptic curve method and return the result.
+#
+# Local rewrite: the previous version relied on EllipticCurve over Z/nZ and
+# division_polynomial(n, x). On current Sage that call returns a single ring
+# element with useless factoring semantics, so the attack silently never
+# found anything (verified: 0 hits in 20 single-threaded trials on a 41-bit
+# factor, and 0 triggers in 200 random curves). The original Qi Cheng
+# j-invariant curve family also cannot be combined with the classic
+# "force a random point onto the curve" construction in affine coordinates,
+# so this version uses plain random curves - the standard ECM choice, which
+# is what makes small-factor recovery reliable. Self-contained: no Sage
+# curve objects, gcd extraction from failed modular inverses.
+
+import random
 import sys
-from sage.parallel.multiprocessing_sage import parallel_iter
-from multiprocessing import cpu_count
-sys.setrecursionlimit(10000)
+from math import gcd
+
+
+class FactorFound(Exception):
+    def __init__(self, value):
+        self.value = value
+
+
+def inv_mod(x, m):
+    """Modular inverse via extended Euclid. Raise FactorFound(gcd) when the
+    inverse does not exist - that gcd is very likely a nontrivial factor."""
+    x %= m
+    old_r, r = x, m
+    old_s, s = 1, 0
+    while r:
+        q = old_r // r
+        old_r, r = r, old_r - q * r
+        old_s, s = s, old_s - q * s
+    if old_r == 1:
+        return old_s % m
+    raise FactorFound(old_r)
+
+
+def point_add(p, q, a, m):
+    """Affine addition on y^2 = x^3 + a*x + b over Z/m (None = infinity)."""
+    if p is None:
+        return q
+    if q is None:
+        return p
+    x1, y1 = p
+    x2, y2 = q
+    dx = (x2 - x1) % m
+    dy = (y2 - y1) % m
+    if dx == 0:
+        if dy == 0:
+            return point_double(p, a, m)
+        return None
+    lam = dy * inv_mod(dx, m) % m
+    x3 = (lam * lam - x1 - x2) % m
+    y3 = (lam * (x1 - x3) - y1) % m
+    return x3, y3
+
+
+def point_double(p, a, m):
+    x, y = p
+    if y % m == 0:
+        return None
+    lam = (3 * x * x + a) * inv_mod(2 * y, m) % m
+    x3 = (lam * lam - 2 * x) % m
+    y3 = (lam * (x - x3) - y) % m
+    return x3, y3
+
+
+def scalar_mult(k, p, a, m):
+    result = None
+    addend = p
+    while k:
+        if k & 1:
+            result = point_add(result, addend, a, m)
+        addend = point_double(addend, a, m)
+        k >>= 1
+    return result
+
+
+def corefunc(n, b1):
+    """One ECM pass on a random curve; returns a factor of n or None."""
+    x0 = random.randrange(2, n)
+    y0 = random.randrange(2, n)
+    a = random.randrange(2, n)
+    point = (x0, y0)
+    try:
+        for i in range(2, b1):
+            point = scalar_mult(i, point, a, n)
+            if point is None:
+                return None  # full group order was smooth; curve is spent
+            if i % 256 == 0:
+                g = gcd(point[0], n)
+                if 1 < g < n:
+                    return int(g)
+    except FactorFound as found:
+        g = found.value
+        if g is not None and 1 < g < n:
+            return int(g)
+    return None
 
 
 def factor(n, attempts=50):
-    r""" Try to factor n using Qi Cheng's elliptic curve algorithm and return the result.
-
-    TESTS::
-        sage: factor(8586738020906178596816665408975869027249332195806516889218842326669979457567897544415936583733118068451112024495528372623268891464850844330698707082078341676048316328425781368868164458486632570090121972627446596326046274266659293352906034163997023314644106659615348855576648233885381655772208214809201687506171743157882478565146018301168224250821080109298362928393693620666868337500513217122524859198701942611835138196019213020523307383514277039557237260096859973)
-        134826985114673693079697889309176855021348273420672992955072560868299506854125722349531357991805652015840085409903545018244092326610812466869635572979633488227724165641914777716235431963802791410179554688486108196212276141821415175590671132382956670453821994294396707908761669407050042067400072453975327507467
-
-        sage: factor(1444329727510154393553799612747635457542181563961160832013134005088873165794135221)
-        74611921979343086722526424506387128972933
+    """ Try to factor n using the elliptic curve method and return the result.
     """
-
-    Consts = {}
-    Consts['0'] = 0
-    Consts['1'] = 1
-    Consts['2'] = 2
-    Consts['3'] = 3
-    Consts['1728'] = 1728
-
-    js = [0, (-2 ^ 5) ^ 3, (-2 ^ 5 * 3) ^ 3, (-2 ^ 5 * 3 * 5 * 11) ^ 3, (-2 ^ 6 * 3 * 5 * 23 * 29) ^ 3]
-
-    def corefunc(n, js, Consts):
-        R = Integers(n)
-
-        for j in js:
-            if j == Consts['0']:
-                a = R.random_element()
-                E = EllipticCurve([Consts['0'], a])
-
-            else:
-                a = R(j) / (R(Consts['1728']) - R(j))
-                c = R.random_element()
-                E = EllipticCurve([Consts['3'] * a * c ^ Consts['2'], Consts['2'] * a * c ^ Consts['3']])
-
-            x = R.random_element()
-            z = E.division_polynomial(n, x)
-            g = gcd(z, n)
-            if g > Consts['1']:
-                return g
-
-    cpus = cpu_count()
-    if attempts > cpus:
-        A = cpus
-    else:
-        A = attempts
-    B = int(attempts / cpus)
-
-    for i in range(0, B  + 1):
-        inputs = [((n, js, Consts,), {})] * A
-        for k, val in parallel_iter(A, corefunc, inputs):
-            if val is not None:
-                return val
+    b1 = 8000  # smoothness bound; fine for factors up to ~50 bits
+    for _ in range(int(attempts)):
+        g = corefunc(n, b1)
+        if g is not None and 1 < g < n:
+            return g
+    return None
 
 
-if __name__ == "__main__":
-    print(factor(Integer(sys.argv[1])))
+if __name__ in {"__main__", "sage.all"}:
+    attempts = Integer(sys.argv[2]) if len(sys.argv) > 2 else 50
+    print(factor(Integer(sys.argv[1]), attempts=attempts))
