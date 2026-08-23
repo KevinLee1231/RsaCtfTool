@@ -318,27 +318,78 @@ def _build_qs_factor_base(n, B):
 def _qs_sieve_interval(n, base, sqrt_map, M, progress=True):
     """Sieve Q(x) = x^2 - n over x in [sqrt(n)-M, sqrt(n)+M].
 
+    Real logarithmic sieving: for every factor-base prime the stored
+    modular roots mark exactly the positions where p divides Q(x), so
+    accumulating log2(p) over those positions approximates log2 of the
+    smooth part of |Q(x)|. Only positions whose accumulated value comes
+    within a small margin of log2|Q(x)| undergo exact trial division,
+    which remains the final arbiter of smoothness.
+
     Returns list of (x, parity_mask, full_exp) relations compatible
     with _try_smooth_dependency / _gaussian_elimination_gf2.
     """
     t = len(base)
     X = isqrt(n)
-    relations = []
+    size = 2 * M + 1
 
-    with tqdm(total=2 * M + 1, disable=not progress, desc="QS trial") as pbar:
-        for off in range(-M, M + 1):
-            x = X + off
+    # log2|Q(X+off)| = log2|off| + log2(X+off+X). The second term varies by
+    # less than 0.001 bits over the whole interval, so a constant plus a
+    # lookup table on |off| approximates it without any per-position
+    # big-integer arithmetic (error <= 1 bit, absorbed by the margin).
+    # off == 0 with X*X == n would make Q vanish; its target goes to -inf.
+    two_x_bits = float((2 * X).bit_length())
+    log_off = [float("-inf")] + [math.log2(v) for v in range(1, M + 1)]
+    log_q = [log_off[abs(off)] + two_x_bits for off in range(-M, M + 1)]
+    logs = [0.0] * size
+
+    # Accumulate log2(p) at every position where p divides Q(X+off).
+    # Roots were precomputed by _build_qs_factor_base: x ≡ ±r mod p for
+    # (n|p)=1, x ≡ 0 for p | n, and x odd for p = 2 with odd n.
+    # One sieving line per prime-power level: level k marks the positions
+    # where p^k divides Q(x) and contributes the k-th copy of log2(p).
+    # Roots are lifted level by level (Hensel). Without the higher levels,
+    # high powers of small primes - very common among smooth values - would
+    # go uncounted and the margin test would discard genuine smooths.
+    q_max_mod = 1 << (n.bit_length() + 1)
+    for p_idx in range(1, t):
+        p = int(base[p_idx])
+        lp = math.log2(p)
+        rs = sorted({int(r) % p for r in sqrt_map[base[p_idx]]})
+        mod = p
+        while rs and mod <= q_max_mod:
+            for r in rs:
+                # index i corresponds to off = i - M and x = X + off, so
+                # x ≡ r (mod p^k)  ⇔  i ≡ r - X + M (mod p^k).
+                start = (r - X + M) % mod
+                logs[start::mod] = [v + lp for v in logs[start::mod]]
+            nxt = []
+            for r in rs:
+                for t_lift in range(p):
+                    cand = r + t_lift * mod
+                    if (cand * cand - n) % (mod * p) == 0 and cand not in nxt:
+                        nxt.append(cand)
+            rs = nxt
+            mod *= p
+
+    # A B-smooth |Q| reaches log_q exactly (every prime factor lies in the
+    # base), so the only gap between logs and log_q is float rounding -
+    # under 1e-12 bits even for large bases. A 2-bit margin therefore keeps
+    # every smooth position while discarding almost all non-smooth ones.
+    margin = 2.0
+
+    relations = []
+    with tqdm(total=size, disable=not progress, desc="QS trial") as pbar:
+        for i in range(size):
+            pbar.update(1)
+            if logs[i] < log_q[i] - margin:
+                continue
+            x = X + (-M + i)
             q_val = x * x - n
             if q_val == 0:
-                pbar.update(1)
                 continue
 
-            abs_q = abs(q_val)
-            temp = abs_q
-            full_exp = [0] * t
-            if q_val < 0:
-                full_exp[0] = 1
-
+            temp = -q_val if q_val < 0 else q_val
+            full_exp = [1, 0] + [0] * (t - 2) if q_val < 0 else [0] * t
             for p_idx in range(1, t):
                 p = base[p_idx]
                 while temp % p == 0:
@@ -351,7 +402,6 @@ def _qs_sieve_interval(n, base, sqrt_map, M, progress=True):
                     if full_exp[idx] & 1:
                         parity |= 1 << idx
                 relations.append((x, parity, full_exp))
-            pbar.update(1)
 
     return relations
 
