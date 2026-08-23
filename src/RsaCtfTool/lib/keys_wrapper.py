@@ -78,6 +78,8 @@ class PublicKey(object):
         self.filename = filename
         self.n = pub.n
         self.e = pub.e
+        self.p = None
+        self.q = None
         self.key = key
 
     def __str__(self):
@@ -132,6 +134,8 @@ class PrivateKey(object):
         return False
 
     def _load_key_from_file(self, filename, password, p, q, d):
+        if isinstance(password, str):
+            password = password.encode()
         with open(filename, "rb") as key_data_fd:
             try:
                 self.key = serialization.load_pem_private_key(
@@ -143,14 +147,18 @@ class PrivateKey(object):
                 loadok = False
 
             if loadok:
+                public_numbers = private_numbers.public_numbers
                 if p is None:
                     self.p = private_numbers.p
                 if q is None:
                     self.q = private_numbers.q
                 if d is None:
                     self.d = private_numbers.d
-                if self.p and self.q:
-                    self.n = self.p * self.q
+                if self.e is None:
+                    self.e = public_numbers.e
+                if self.n is None:
+                    self.n = public_numbers.n
+                self.filename = filename
                 self._compute_phi()
             else:
                 tmp = load_partial_privkey(filename)

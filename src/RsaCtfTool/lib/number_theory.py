@@ -506,13 +506,10 @@ def common_modulus_related_message(e1, e2, n, c1, c2):
 
     g, a, b = gcdext(e1, e2)
 
-    if g == 1:
-        return None
-
     c1 = neg_pow(c1, a, n) if a < 0 else powmod(c1, a, n)
     c2 = neg_pow(c2, b, n) if b < 0 else powmod(c2, b, n)
     ct = c1 * c2 % n
-    return int(introot(ct, g))
+    return ct if g == 1 else int(introot(ct, g))
 
 
 def phi(n, factors):

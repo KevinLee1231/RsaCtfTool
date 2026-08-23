@@ -6,7 +6,6 @@ import time
 import math
 from random import randint
 from tqdm import tqdm
-from itertools import count
 from RsaCtfTool.lib.exceptions import FactorizationError
 from RsaCtfTool.lib.number_theory import (
     isqrt,
@@ -53,14 +52,14 @@ def brent(N):
         while g == 1:
             x = y
             i = 0
-            while i <= r:
+            while i < r:
                 y = (powmod(y, 2, N) + c) % N
                 i += 1
             k = 0
             while k < r and g == 1:
                 ys = y
                 i = 0
-                while i <= min(m, r - k):
+                while i < min(m, r - k):
                     y = (powmod(y, 2, N) + c) % N
                     q = q * (abs(x - y)) % N
                     i += 1
@@ -72,8 +71,10 @@ def brent(N):
             while True:
                 ys = (powmod(ys, 2, N) + c) % N
                 g = gcd(abs(x - ys), N)
-                if N > g > 1:
-                    return g
+                if g > 1:
+                    break
+            if N > g > 1:
+                return g
 
 
 def strong_pseudoprime(N):
@@ -365,6 +366,8 @@ def quadratic_sieve(n, B=None, M=None, progress=True, n_extra=10, max_retries=6)
     """
     if n & 1 == 0:
         return 2, n // 2
+    if is_prime(n):
+        return None
 
     if B is None:
         ln_n = log(n)
@@ -940,9 +943,11 @@ def wiener(n, e, progress=True):
                         return pq
 
 
-def williams_pp1(n):
-    p, i2 = 2, isqrt(n)
-    for v in count(1):
+def williams_pp1(n, max_v=100):
+    i2 = isqrt(n)
+    for seed in range(1, max_v + 1):
+        p = 2
+        v = seed
         while True:
             e = ilogb(i2, p)
             if e == 0:

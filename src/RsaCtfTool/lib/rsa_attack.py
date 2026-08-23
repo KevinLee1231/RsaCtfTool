@@ -41,19 +41,13 @@ class RSAAttack(object):
         """Return a boolean if requested actions are done
         avoiding running extra attacks
         """
-        if self.args.private is not None and self.priv_key is not None:
-            if self.args.decrypt is None:
-                return True
-            if self.decrypted != []:
-                return True
+        # A recovered private key is sufficient to stop attacking.  Ciphertext
+        # decryption happens in print_results_details() after the attack loop.
+        if self.priv_key is not None:
+            return True
 
-        if self.args.decrypt is not None and self.decrypted != []:
-            if self.args.private is None:
-                return True
-            if self.priv_key is not None:
-                return True
-
-        return False
+        # Some attacks recover plaintext directly without recovering a key.
+        return bool(self.decrypted and not self.args.private)
 
     def print_results_details(self, publickeyname):
         """Print extra output according to requested action.
