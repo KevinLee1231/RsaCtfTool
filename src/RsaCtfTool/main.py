@@ -209,11 +209,20 @@ def parse_args():
 
 def run_conspicuous_check(args, logger):
     try:
-        pub_key, priv_key = generate_keys_from_p_q_e_n(args.p, args.q, args.e, args.n)
-    except ValueError:
-        logger.error(
-            "Looks like the values for generating key are not ok... (no invmod)"
-        )
+        if args.key is not None:
+            priv_key = PrivateKey(filename=args.key, password=args.password)
+        else:
+            _, priv_key = generate_keys_from_p_q_e_n(
+                args.p, args.q, args.e, args.n
+            )
+    except Exception as exc:
+        logger.error("Unable to load the private key: %s", exc)
+        return False
+    if priv_key is None or any(
+        value is None
+        for value in (priv_key.n, priv_key.p, priv_key.q, priv_key.d, priv_key.e)
+    ):
+        logger.error("A complete private key is required for conspicuousness checks.")
         return False
     c = priv_key.is_conspicuous()
     if c:
@@ -392,7 +401,16 @@ def decrypt_file(args, logger):
 
 
 def pubkey_detail(args, logger):
-    for publickey in args.publickey:
+    publickeys = args.publickey
+    if isinstance(publickeys, str):
+        if "*" in publickeys or "?" in publickeys:
+            publickeys = glob(publickeys)
+        elif "," in publickeys:
+            publickeys = publickeys.split(",")
+        else:
+            publickeys = [publickeys]
+
+    for publickey in publickeys:
         logger.info(f"Details for {publickey}:")
         with open(publickey, "rb") as key_data_fd:
             key = RSA.importKey(key_data_fd.read())
@@ -519,7 +537,7 @@ def _handle_early_exit_modes(args, logger):
     if args.key is not None and args.dumpkey:
         dump_key_parameters(args)
         sys.exit(0)
-    if args.key is not None and args.isconspicuous:
+    if args.isconspicuous:
         if run_conspicuous_check(args, logger):
             sys.exit(-1)
         sys.exit(0)

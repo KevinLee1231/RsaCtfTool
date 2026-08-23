@@ -51,10 +51,15 @@ RsaCtfTool = "RsaCtfTool.main:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-RsaCtfTool = ["data/*"]
+RsaCtfTool = ["data/*", "sage/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "attack: integration tests that invoke attack backends",
+    "network: tests that require external network access",
+    "slow: computationally expensive tests",
+]
 
 [tool.ruff]
 line-length = 88
