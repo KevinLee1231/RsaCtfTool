@@ -35,5 +35,4 @@ class Attack(AbstractAttack):
             return None, None
 
     def test(self):
-        self.timeout = 180
-        return None, None
+        raise NotImplementedError

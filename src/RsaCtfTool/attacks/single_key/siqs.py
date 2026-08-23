@@ -34,12 +34,12 @@ class SiqsAttack(object):
         yafurun = subprocess.check_output(
             [
                 "yafu",
-                f"siqs({str(self.n)})",
                 "-siqsT",
                 str(self.timeout),
                 "-threads",
                 str(self.threads),
             ],
+            input=f"siqs({self.n})\n".encode(),
             timeout=self.timeout,
             stderr=subprocess.DEVNULL,
         )

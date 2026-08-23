@@ -18,6 +18,7 @@ class Attack(AbstractAttack):
         Use sage's internal quadratic sieve method.
         If input is less than 40 digits, i'll fallback to sage factor method.
         """
+        privatekey = None
         try:
             sageresult = (
                 subprocess.check_output(
@@ -29,29 +30,36 @@ class Attack(AbstractAttack):
                 .rstrip()
             )
             sageresult = sageresult.split("\n")
-            if len(sageresult) > 0:
-                for line in sageresult:
-                    # print(line)
-                    if line.rstrip().find("// ** ") != 0:
-                        p, q = line.split(" ")
-                        p, q = int(p), int(q)
-                        publickey.p, publickey.q = p, q
-                        privatekey = PrivateKey(
-                            p=publickey.p,
-                            q=publickey.q,
-                            e=int(publickey.e),
-                            n=int(publickey.n),
-                        )
+            for line in sageresult:
+                line = line.strip()
+                if not line or line.startswith("// ** "):
+                    continue
+                fields = line.split()
+                if len(fields) != 2:
+                    continue
+                p, q = map(int, fields)
+                if p <= 1 or q <= 1 or p * q != publickey.n:
+                    continue
+                publickey.p, publickey.q = p, q
+                privatekey = PrivateKey(
+                    p=publickey.p,
+                    q=publickey.q,
+                    e=int(publickey.e),
+                    n=int(publickey.n),
+                )
             return (privatekey, None)
 
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            ValueError,
+        ):
             return (None, None)
 
     def test(self):
+        from RsaCtfTool.lib.crypto_wrapper import RSA
         from RsaCtfTool.lib.keys_wrapper import PublicKey
 
-        key_data = """-----BEGIN PUBLIC KEY-----
-MCwwDQYJKoZIhvcNAQEBBQADGwAwGAIRAvBQ/pOJQ63t/HNvO76IB8UCAwEAAQ==
------END PUBLIC KEY-----"""
+        key_data = RSA.construct((1009 * 1013, 65537)).publickey().exportKey()
         result = self.attack(PublicKey(key_data), progress=False)
         return result != (None, None)

@@ -29,7 +29,11 @@ class Attack(AbstractAttack):
                     stderr=subprocess.DEVNULL,
                 )
             )
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            ValueError,
+        ):
             return (None, None)
         if p > 0:
             q = publickey.n // p

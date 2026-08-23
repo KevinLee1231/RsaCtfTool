@@ -20,6 +20,8 @@ class Attack(AbstractAttack):
         c2 = bytes_to_long(c2)
 
         decrypted_message = common_modulus_related_message(k1.e, k2.e, k1.n, c1, c2)
+        if decrypted_message is None:
+            return None
         return long_to_bytes(decrypted_message)
 
     def attack(self, publickeys, cipher=[]):

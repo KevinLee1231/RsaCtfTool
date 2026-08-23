@@ -32,7 +32,11 @@ class Attack(AbstractAttack):
                     stderr=subprocess.DEVNULL,
                 )
             )
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            ValueError,
+        ):
             return (None, None)
         if sageresult > 0:
             tmp_priv = RSA.construct((int(publickey.n), int(publickey.e), sageresult))

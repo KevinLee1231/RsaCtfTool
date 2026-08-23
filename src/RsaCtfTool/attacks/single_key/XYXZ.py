@@ -38,12 +38,9 @@ class Attack(AbstractAttack):
         return None, None
 
     def test(self):
+        from RsaCtfTool.lib.crypto_wrapper import RSA
         from RsaCtfTool.lib.keys_wrapper import PublicKey
 
-        key_data = """-----BEGIN PUBLIC KEY-----
-MIGBMA0GCSqGSIb3DQEBAQUAA3AAMG0CZgtR6qd1mkWTV8BvZUh84Y8jzytSu6s0
-mD4isqXK3eM/yw8aWr/KkMT4EygFOhzHVnbE9LwyQ9hMkr5WRowHi5xmL3+aXJSX
-UNxJdaAdtLV4pRHcziCDgJEvc4Yi1UAMkgaNoeoWiwIDAQAB
------END PUBLIC KEY-----"""
+        key_data = RSA.construct((101 * 101, 17)).publickey().exportKey()
         result = self.attack(PublicKey(key_data), progress=False)
         return result != (None, None)

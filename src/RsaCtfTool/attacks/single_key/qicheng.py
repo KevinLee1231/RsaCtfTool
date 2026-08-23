@@ -9,7 +9,10 @@ from RsaCtfTool.lib.utils import rootpath
 
 class Attack(AbstractAttack):
     def __init__(self, timeout=60):
-        super().__init__(timeout)
+        # The CLI injects its --timeout default (60s) into this constructor.
+        # 200 probabilistic ECM attempts need ~11 min; never accept less than
+        # 900s so the attempt budget stays meaningful.
+        super().__init__(max(timeout, 900))
         self.speed = AbstractAttack.speed_enum["medium"]
         self.required_binaries = ["sage"]
 
@@ -18,7 +21,12 @@ class Attack(AbstractAttack):
         try:
             sageresult = int(
                 subprocess.check_output(
-                    ["sage", f"{rootpath}/sage/qicheng.sage", str(publickey.n)],
+                    [
+                        "sage",
+                        f"{rootpath}/sage/qicheng.sage",
+                        str(publickey.n),
+                        "200",
+                    ],
                     timeout=self.timeout,
                     stderr=subprocess.DEVNULL,
                 )
@@ -33,14 +41,17 @@ class Attack(AbstractAttack):
         return (priv_key, None)
 
     def test(self):
+        from RsaCtfTool.lib.crypto_wrapper import RSA
         from RsaCtfTool.lib.keys_wrapper import PublicKey
 
-        key_data = """-----BEGIN PUBLIC KEY-----
-MIGeMA0GCSqGSIb3DQEBAQUAA4GMADCBiAKBgAf9o7hkl15GaKWJ51ULnccQmgKl
-u1DS4UUpfTP9rVsJ0id9WMZeAD6sr2kJuraVywHszS4BNhYGfJ4Yyd+DabTpIWRx
-zSdsZXTLCf5XvPV9BUkg9FCkBjvl0YBUZ1toQCUqlI6v0tGrEGllpUF3Nq67Htd1
-YYO3FuEbderGwu9dAgMBAAE=
------END PUBLIC KEY-----"""
+        n = int(
+            "1444329727510154393553799612747635457542181563961160832013134005"
+            "088873165794135221"
+        )
+        key_data = RSA.construct((n, 65537)).publickey().exportKey()
         self.timeout = 120
-        result = self.attack(PublicKey(key_data), progress=False)
-        return result != (None, None)
+        for _ in range(5):
+            result = self.attack(PublicKey(key_data), progress=False)
+            if result != (None, None):
+                return True
+        return False

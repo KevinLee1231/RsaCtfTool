@@ -20,6 +20,8 @@ class Attack(AbstractAttack):
 
         if cipher is None or len(cipher) == 0:
             return None, None
+        if len(cipher) < len(publickeys):
+            return None, None
 
         ciphers = [int.from_bytes(c, "big") for c in cipher]
 

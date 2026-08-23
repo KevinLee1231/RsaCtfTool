@@ -11,56 +11,45 @@ class Attack(AbstractAttack):
     def __init__(self, timeout=60):
         super().__init__(timeout)
         self.speed = AbstractAttack.speed_enum["medium"]
+        self.required_binaries = ["sage"]
 
     def attack(self, publickey, cipher=[], progress=True):
         """Run partial_d attack with a timeout"""
-        try:
-            if not isinstance(publickey, PrivateKey):
-                self.logger.error(
-                    "[!] partial_d attack is only for partial private keys not pubkeys..."
-                )
-                raise FactorizationError
+        if not isinstance(publickey, PrivateKey) or publickey.d is None:
+            self.logger.error(
+                "[!] partial_d attack is only for partial private keys not pubkeys..."
+            )
+            return None, None
 
-            CMD = [
+        try:
+            cmd = [
                 "sage",
                 f"{rootpath}/sage/partial_d.sage",
                 str(publickey.n),
                 str(publickey.e),
                 str(publickey.d),
             ]
-            ret = [
-                int(x)
-                for x in subprocess.check_output(
-                    CMD,
-                    timeout=self.timeout,
-                    stderr=subprocess.DEVNULL,
-                )
-                .decode("utf8")
-                .rstrip()
-                .split(" ")
-            ]
-            p, q = ret
-            assert p * q == publickey.n
-            publickey.p = p
-            publickey.q = q
-
-        except Exception:
+            result = subprocess.check_output(
+                cmd,
+                timeout=self.timeout,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            p, q = (int(value) for value in result.split())
+            if p * q != publickey.n:
+                raise FactorizationError("Sage returned factors that do not match n")
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            FactorizationError,
+            ValueError,
+        ):
             self.logger.error("[!] partial_d internal error...")
             return None, None
 
-        if publickey.p is not None and publickey.q is not None:
-            try:
-                priv_key = PrivateKey(
-                    n=int(publickey.n),
-                    p=int(publickey.p),
-                    q=int(publickey.q),
-                    e=int(publickey.e),
-                )
-                # print(priv_key)
-                return priv_key, None
-            except ValueError:
-                return None, None
-        return None, None
+        publickey.p = p
+        publickey.q = q
+        return self.create_private_key(publickey)
 
     def test(self):
         raise NotImplementedError

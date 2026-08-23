@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from RsaCtfTool.attacks.abstract_attack import AbstractAttack
+import ast
 import subprocess
-from RsaCtfTool.lib.keys_wrapper import PrivateKey
+
+from RsaCtfTool.attacks.abstract_attack import AbstractAttack
 from RsaCtfTool.lib.utils import rootpath
 
 
@@ -16,29 +17,32 @@ class Attack(AbstractAttack):
     def attack(self, publickey, cipher=[], progress=True):
         """binary polynomial factoring"""
         try:
-            sageresult = str(
-                subprocess.check_output(
-                    [
-                        "sage",
-                        f"{rootpath}/sage/binary_polynomial_factoring.sage",
-                        str(publickey.n),
-                    ],
-                    timeout=self.timeout,
-                    stderr=subprocess.DEVNULL,
-                )
-            ).split(" ")
-
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            output = subprocess.check_output(
+                [
+                    "sage",
+                    f"{rootpath}/sage/binary_polynomial_factoring.sage",
+                    str(publickey.n),
+                ],
+                timeout=self.timeout,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            factors = ast.literal_eval(output.strip())
+            p = next(
+                int(factor)
+                for factor in factors
+                if 1 < int(factor) < publickey.n
+                and publickey.n % int(factor) == 0
+            )
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            StopIteration,
+            SyntaxError,
+            TypeError,
+            ValueError,
+        ):
             return (None, None)
 
-        try:
-            p = int(sageresult[0])
-        except ValueError:
-            return (None, None)
-
-        if p > 0:
-            q = publickey.n // p
-            priv_key = PrivateKey(p, int(q), int(publickey.e), int(publickey.n))
-            return (priv_key, None)
-        else:
-            return (None, None)
+        q = publickey.n // p
+        return self.create_private_key_from_pqe(p, q, publickey.e, publickey.n)
