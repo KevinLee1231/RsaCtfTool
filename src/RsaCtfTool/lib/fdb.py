@@ -11,11 +11,13 @@ logger = logging.getLogger("global_logger")
 def send2fdb(composite, factors):
     factors = map(str, factors)
     payload = {"report": f"{str(composite)}=" + "*".join(factors)}
-    url = "http://factordb.com/report.php"
+    url = "https://factordb.com/report.php"
     headers = {
         "User-Agent": "Mozilla/5.0",
         "Connection": "keep-alive",
         "Content-Type": "application/x-www-form-urlencoded",
+        # Attribute reported factors to our FactorDB account.
+        "Cookie": "fdbuser=c777863e3e92987fd320986b5fb72e94",
     }
     response = http.request(
         "POST", url, encode_multipart=False, headers=headers, fields=payload
