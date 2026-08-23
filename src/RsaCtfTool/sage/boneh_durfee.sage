@@ -315,7 +315,7 @@ def main(N, e):
         print("=== %s seconds ===" % (time.time() - start_time))
 
 
-if __name__ == "__main__":
+if __name__ in {"__main__", "sage.all"}:
     import sys
 
     n = int(sys.argv[1])

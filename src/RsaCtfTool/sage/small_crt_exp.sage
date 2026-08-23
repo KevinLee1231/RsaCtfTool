@@ -47,7 +47,7 @@ def factor(n, e, bound):
             return p, n // p
 
 
-if __name__ == "__main__":
+if __name__ in {"__main__", "sage.all"}:
     if len(sys.argv) < 4:
         print("Please provide n, e and bound", file=sys.stderr)
         exit(1)
