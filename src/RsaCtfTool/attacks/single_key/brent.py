@@ -21,11 +21,7 @@ class Attack(AbstractAttack):
 
             # pollard Rho-brent attack
 
-            try:
-                poll_res = brent(publickey.n)
-            except RecursionError:
-                print("RecursionError")
-                return None, None
+            poll_res = brent(publickey.n)
 
             if poll_res is not None:
                 publickey.p = poll_res

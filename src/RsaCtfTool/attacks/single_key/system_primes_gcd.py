@@ -18,7 +18,6 @@ class Attack(AbstractAttack):
         for prp in tqdm(primes, disable=(not progress)):
             p = gcd(publickey.n, prp)
             if publickey.n > p > 1:
-                publickey.p = p
                 q = publickey.n // p
                 if is_prime(q):
                     publickey.p = p
@@ -26,12 +25,11 @@ class Attack(AbstractAttack):
                     return self.create_private_key_from_pqe(
                         publickey.p, publickey.q, publickey.e, publickey.n
                     )
-                else:
-                    self.logger.error(
-                        "[!] Currently this tool only supports RSA textbook semiprime modulus, your p and q are: (%d,%d)"
-                        % (p, q)
-                    )
-                    return None, None
+                self.logger.error(
+                    "[!] Currently this tool only supports RSA textbook semiprime modulus, your p and q are: (%d,%d)"
+                    % (p, q)
+                )
+                return None, None
 
         return None, None
 

@@ -8,7 +8,7 @@ import inspect
 import traceback
 from RsaCtfTool.lib.keys_wrapper import PublicKey, PrivateKey
 from RsaCtfTool.lib.exceptions import FactorizationError
-from RsaCtfTool.lib.utils import print_results
+from RsaCtfTool.lib.utils import print_results, TimeoutError
 from RsaCtfTool.lib.fdb import send2fdb
 from RsaCtfTool.lib.crypto_wrapper import bytes_to_long, long_to_bytes
 from RsaCtfTool.lib.number_theory import is_prime, isqrt, gcd

@@ -16,7 +16,6 @@ class Attack(AbstractAttack):
         try:
             publickey.p, publickey.q = kraitchik(publickey.n)
         except FactorizationError:
-            self.logger.error("N should not be a 4k+2 number...")
             return None, None
 
         return self.create_private_key(publickey)

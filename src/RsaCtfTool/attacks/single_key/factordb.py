@@ -4,7 +4,6 @@
 from factordb.factordb import FactorDB
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack
 from RsaCtfTool.lib.keys_wrapper import PrivateKey
-from RsaCtfTool.lib.number_theory import ilog10
 
 
 def getfdb(composite):
@@ -22,29 +21,23 @@ class Attack(AbstractAttack):
         """Factors available online?"""
         try:
             n = publickey.n
-            if ilog10(n) < (10**8):
-                pq = getfdb(n)
-                if pq[0] != n:
-                    p, q = pq
-                    if publickey.n != int(p) * int(q):
-                        return None, None
-                    publickey.p = p
-                    publickey.q = q
-                    priv_key = PrivateKey(
-                        p=int(publickey.p),
-                        q=int(publickey.q),
-                        e=int(publickey.e),
-                        n=int(publickey.n),
-                    )
-                    return priv_key, None
-                else:
-                    self.logger.error(
-                        "[!] Composite not in factordb, couldn't factorize..."
-                    )
+            pq = getfdb(n)
+            if pq[0] != n:
+                p, q = pq
+                if publickey.n != int(p) * int(q):
                     return None, None
+                publickey.p = p
+                publickey.q = q
+                priv_key = PrivateKey(
+                    p=int(publickey.p),
+                    q=int(publickey.q),
+                    e=int(publickey.e),
+                    n=int(publickey.n),
+                )
+                return priv_key, None
             else:
                 self.logger.error(
-                    "publickey.n size should be less than 10000000 digits..."
+                    "[!] Composite not in factordb, couldn't factorize..."
                 )
                 return None, None
         except Exception:

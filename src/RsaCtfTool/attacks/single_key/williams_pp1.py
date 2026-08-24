@@ -11,7 +11,7 @@ class Attack(AbstractAttack):
         self.speed = AbstractAttack.speed_enum["slow"]
 
     def attack(self, publickey, cipher=[], progress=True):
-        """Run attack with Pollard Rho-brent"""
+        """Run attack with Williams' p+1 method"""
 
         try:
             if not hasattr(publickey, "p"):
@@ -26,7 +26,9 @@ class Attack(AbstractAttack):
             if wres is not None:
                 publickey.p = wres
                 publickey.q = publickey.n // publickey.p
-                print(publickey.p, publickey.q)
+                self.logger.info(
+                    f"[+] Williams p+1 found factors: {publickey.p}, {publickey.q}"
+                )
 
             return self.create_private_key_from_pqe(
                 publickey.p, publickey.q, publickey.e, publickey.n

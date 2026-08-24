@@ -16,12 +16,7 @@ class Attack(AbstractAttack):
 
 
     def can_run(self):
-        try:
-            app_id = os.environ.get("WA_API_KEY")
-            assert app_id is not None
-            return True
-        except Exception:
-            return False
+        return os.environ.get("WA_API_KEY") is not None
 
     def wa_query_factors(self, n, safe=True):
         tmp = []
