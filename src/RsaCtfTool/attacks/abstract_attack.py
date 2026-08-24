@@ -80,6 +80,10 @@ class AbstractAttack(object):
                     q=int(publickey.q),
                     e=int(publickey.e),
                 )
+                if priv_key.key is None:
+                    # RSA.construct failed inside PrivateKey; the factors
+                    # are not a valid split of n - do not hand back a key.
+                    return None, None
                 return priv_key, None
             except ValueError:
                 return None, None
@@ -104,6 +108,8 @@ class AbstractAttack(object):
         if p is not None and q is not None:
             try:
                 priv_key = PrivateKey(p=int(p), q=int(q), e=int(e), n=int(n))
+                if priv_key.key is None:
+                    return None, None
                 return priv_key, None
             except (ValueError, TypeError):
                 return None, None
