@@ -598,8 +598,10 @@ def FactorHighAndLowBitsEqual(n, max_middle_bits=24):
     a = isqrt(n - 1) + 1
     k_shift = 1 << k
 
+    logger = logging.getLogger("global_logger")
     for middle_bits in range(1, max_middle_bits + 1):
-        print(f"middle bits: {middle_bits} of {n_size}/2")
+        logger.debug(f"FactorHighAndLowBitsEqual: middle bits: "
+                     f"{middle_bits} of {n_size}/2")
         for r in [r0, k_shift - r0]:
             s = a
             for i in range(k):

@@ -13,6 +13,7 @@ class Attack(AbstractAttack):
         super().__init__(timeout)
         self.speed = AbstractAttack.speed_enum["slow"]
         self.required_binaries = ["sage"]
+        self.required_scripts = ["sage/binary_polynomial_factoring.sage"]
 
     def attack(self, publickey, cipher=[], progress=True):
         """binary polynomial factoring"""

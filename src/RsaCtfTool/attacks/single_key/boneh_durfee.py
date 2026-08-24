@@ -13,6 +13,7 @@ class Attack(AbstractAttack):
         super().__init__(timeout)
         self.speed = AbstractAttack.speed_enum["medium"]
         self.required_binaries = ["sage"]
+        self.required_scripts = ["sage/boneh_durfee.sage"]
 
     def attack(self, publickey, cipher=[], progress=True):
         """Use boneh durfee method, should return a d value, else returns 0

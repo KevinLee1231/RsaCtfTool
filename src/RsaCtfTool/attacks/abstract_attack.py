@@ -2,11 +2,16 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import os
 from pathlib import Path
 import sys
 from typing import List, Any, Optional, Tuple
 import shutil
 from RsaCtfTool.lib.utils import timeout, TimeoutError
+
+# Repository root (the directory that contains the package), used to
+# resolve declared helper scripts.
+_ROOTPATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")), TimeoutError
 
 
 class AbstractAttack(object):
@@ -17,6 +22,9 @@ class AbstractAttack(object):
         self.speed = AbstractAttack.speed_enum["medium"]
         self.timeout = timeout
         self.required_binaries = []
+        # Helper scripts (relative to the repository root) that must exist
+        # for the attack to run; e.g. "sage/boneh_durfee.sage".
+        self.required_scripts = []
 
     def get_name(self) -> str:
         """Return attack name"""
@@ -29,6 +37,14 @@ class AbstractAttack(object):
             if shutil.which(required_binary) is None:
                 self.logger.warning(
                     f"Can't load {self.get_name()} because {required_binary} binary is not installed"
+                )
+                return False
+        for required_script in self.required_scripts:
+            script_path = os.path.join(_ROOTPATH, required_script)
+            if not os.path.isfile(script_path):
+                self.logger.warning(
+                    f"Can't load {self.get_name()} because helper script "
+                    f"{required_script} is missing"
                 )
                 return False
         return True

@@ -12,6 +12,7 @@ class Attack(AbstractAttack):
         super().__init__(timeout)
         self.speed = AbstractAttack.speed_enum["medium"]
         self.required_binaries = ["sage"]
+        self.required_scripts = ["sage/small_crt_exp.sage"]
 
     def attack(self, publickey, cipher=[], progress=True):
         """Factor n if mininum of crt exponent is small enough"""

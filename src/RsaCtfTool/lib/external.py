@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 
@@ -5,7 +6,7 @@ NECA_BIN = os.environ.get("NECA_BIN", "neca")
 
 
 def neca_factor_driver(n, timeout=None):
-    print("[*] Factoring %d with neca..." % n)
+    logging.getLogger("global_logger").info("[*] Factoring %d with neca..." % n)
     necaresult = subprocess.check_output(
         [NECA_BIN, f"{n}"], timeout=timeout, stderr=subprocess.DEVNULL
     )

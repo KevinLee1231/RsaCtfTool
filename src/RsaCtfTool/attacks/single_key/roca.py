@@ -14,6 +14,7 @@ class Attack(AbstractAttack):
         super().__init__(timeout)
         self.speed = AbstractAttack.speed_enum["slow"]
         self.required_binaries = ["sage"]
+        self.required_scripts = ["sage/roca_attack.py"]
         self.logger = logging.getLogger("global_logger")
 
     def attack(self, publickey, cipher=[], progress=True):

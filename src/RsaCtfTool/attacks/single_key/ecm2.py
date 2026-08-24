@@ -13,6 +13,9 @@ class Attack(AbstractAttack):
         super().__init__(timeout)
         self.speed = AbstractAttack.speed_enum["medium"]
         self.required_binaries = ["sage"]
+        # ecm2.sage has been missing from the tree; without this guard
+        # the attack silently produced no output at all.
+        self.required_scripts = ["sage/ecm2.sage"]
 
     def attack(self, publickey, cipher=[], progress=True):
         """use elliptic curve method
