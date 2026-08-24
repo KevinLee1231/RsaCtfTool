@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import itertools
+import logging
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack
 from RsaCtfTool.lib.number_theory import common_modulus_related_message
 from RsaCtfTool.lib.crypto_wrapper import long_to_bytes, bytes_to_long
@@ -65,7 +66,7 @@ class Attack(AbstractAttack):
         cipher2 = base64.b64decode(
             "jmVRiKyVPy1CHiYLl8fvpsDAhz8rDa/Ug87ZUXZ//rMBKfcJ5MqZnQbyTJZwSNASnQfgel3J/xJsjlnf8LoChzhgT28qSppjMfWtQvR6mar1GA0Ya1VRHkhggX1RUFA4uzL56X5voi0wZEpJITUXubbujDXHjlAfdLC7BvL/5+w="
         )
-        print("cypher decoded..")
+        logging.getLogger("global_logger").debug("cypher decoded..")
         result = self.attack(
             [PublicKey(key1_data), PublicKey(key2_data)],
             [
@@ -73,5 +74,5 @@ class Attack(AbstractAttack):
                 cipher2,
             ],
         )
-        print(result)
+        logging.getLogger("global_logger").debug("result: %r", result)
         return result != (None, None)

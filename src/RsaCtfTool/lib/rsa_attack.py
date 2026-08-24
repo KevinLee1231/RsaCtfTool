@@ -299,7 +299,7 @@ class RSAAttack(object):
             self.args.p = self.args.n // self.args.q
         self.need_run = self.args.p is None or self.args.q is None
         if self.args.show_modulus:
-            print("modulus:", self.args.n)
+            self.logger.info("modulus: %s", self.args.n)
 
     def _execute_single_attack(self, attack_module):
         if not attack_module.can_run():

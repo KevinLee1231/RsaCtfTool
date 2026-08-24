@@ -4,6 +4,7 @@
 import sys
 import time
 import math
+import logging
 from array import array
 from random import randint
 from tqdm import tqdm
@@ -641,18 +642,19 @@ class Fibonacci:
             return self._fib_res(n, d)[0]
 
     def get_period_bigint(self, N, min_accept, xdiff):
+        logger = logging.getLogger("global_logger")
         search_len = int(pow(N, (1.0 / 6) / 100))
 
         search_len = max(search_len, min_accept)
         if self.verbose:
-            print("Search_len: %d, log2(N): %d" % (search_len, ilog2(N)))
+            logger.debug("Search_len: %d, log2(N): %d" % (search_len, ilog2(N)))
 
         starttime = time.time()
         p_len = 10 ** (((ilog10(N) + xdiff) >> 1) + 1)
         begin, end = N - p_len, N + p_len
         begin = max(begin, 1)
         if self.verbose:
-            print("Search begin: %d, end: %d" % (begin, end))
+            logger.debug("Search begin: %d, end: %d" % (begin, end))
 
         look_up = {
             self.get_n_mod_d(x, N): x
@@ -660,7 +662,7 @@ class Fibonacci:
         }
 
         if self.verbose:
-            print("Searching...")
+            logger.debug("Searching...")
 
         while True:
             randi = randint(begin, end)
@@ -671,23 +673,15 @@ class Fibonacci:
                     ) == 0:
                         td = int(time.time() - starttime)
                         if self.verbose:
-                            # print(
-                            #     "For N = %d Found T:%d, randi: %d, time used %f secs."
-                            #     % (N, T, randi, td)
-                            # )
-                            print(
+                            logger.debug(
                                 "For N = %d Found randi: %d, time used %f secs."
                                 % (N, randi, td)
                             )
                         return phi_guess
                     else:
                         if self.verbose:
-                            # print(
-                            #     "For N = %d\n Found res: %d, res_n: %d , T: %d\n but failed!"
-                            #     % (N, res, res_n, T)
-                            # )
-                            print(
-                                "For N = %d\n Found res: %d, res_n: %d\n but failed!"
+                            logger.debug(
+                                "For N = %d\n Found res: %d, res_n: %d but failed!"
                                 % (
                                     N,
                                     res,
