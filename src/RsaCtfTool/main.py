@@ -198,7 +198,7 @@ def parse_args():
 
     parser.add_argument(
         "--show_modulus",
-        help="show tracebacks",
+        help="print the modulus when provided via -n",
         action="store_true",
     )
 
@@ -419,12 +419,16 @@ def pubkey_detail(args, logger):
 
 
 def cleanup(args):
+    # Only remove files load_keys() created this run; those always live in
+    # the system temp directory, so anchoring on it avoids touching any
+    # user file that merely contains "tmp" in its name.
+    tmpdir = tempfile.gettempdir()
     if args.publickey is not None:
         for pub in args.publickey:
             try:
-                if "tmp" in pub and "tmp/" not in pub:
+                if os.path.abspath(pub).startswith(tmpdir):
                     os.remove(pub)
-            except Exception:
+            except OSError:
                 continue
 
 
@@ -485,16 +489,20 @@ def _recover_pq_from_ned(args, logger):
         logger.warning("[!] Impossible to recover p and q from d")
 
 
-def _compute_other_prime(args):
+def _compute_other_prime(args, logger):
     if args.n and (args.p or args.q):
-        args.p, args.q = generate_pq_from_n_and_p_or_q(args.n, args.p, args.q)
+        try:
+            args.p, args.q = generate_pq_from_n_and_p_or_q(args.n, args.p, args.q)
+        except ValueError as exc:
+            logger.error(f"[!] {exc}")
+            sys.exit(1)
 
 
 def _compute_missing_values(args, logger):
     _warn_if_extra_primes(args, logger)
     _compute_n_from_pq(args)
     _recover_pq_from_ned(args, logger)
-    _compute_other_prime(args)
+    _compute_other_prime(args, logger)
     return args
 
 
@@ -580,17 +588,17 @@ def _handle_fully_specified_key(args, logger):
         print(pub_key.decode("utf-8"))
 
     if args.decrypt is not None:
-        for u in args.decrypt:
-            if priv_key is not None:
-                decrypts.append(priv_key.decrypt(args.decrypt))
-            else:
-                logger.error(
-                    "Looks like the values for generating key are not ok... (no invmod)"
-                )
-                sys.exit(1)
+        if priv_key is not None:
+            decrypts = priv_key.decrypt(args.decrypt)
+            if not isinstance(decrypts, list):
+                decrypts = [decrypts]
+        else:
+            logger.error(
+                "Looks like the values for generating key are not ok... (no invmod)"
+            )
+            sys.exit(1)
     print_results(args, args.publickey[0], priv_key, decrypts)
     sys.exit(0)
-    return decrypts
 
 
 def main():

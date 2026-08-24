@@ -41,11 +41,20 @@ def load_partial_privkey(keyfile):
 
 
 def generate_pq_from_n_and_p_or_q(n, p=None, q=None):
-    """Return p and q from (n, p) or (n, q)"""
+    """Return (p, q) from (n, p) or (n, q).
+
+    Raises ValueError when neither prime is supplied, or when the supplied
+    prime does not divide n - callers previously received a silently
+    wrong floor-division quotient in that case.
+    """
+    if p is None and q is None:
+        raise ValueError("at least one prime factor must be provided")
     if p is None:
         p = n // q
     elif q is None:
         q = n // p
+    if p * q != n:
+        raise ValueError("the supplied prime does not divide n")
     return (p, q)
 
 
