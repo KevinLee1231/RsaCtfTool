@@ -4,7 +4,7 @@
 from tqdm import tqdm
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack
 from RsaCtfTool.lib.keys_wrapper import PrivateKey
-from RsaCtfTool.lib.number_theory import is_divisible
+from RsaCtfTool.lib.number_theory import is_divisible, is_prime
 
 
 class Attack(AbstractAttack):
@@ -18,9 +18,13 @@ class Attack(AbstractAttack):
         """
         maxlen = 25  # max number of digits in the final integer
         for i in tqdm(range(maxlen - 4), disable=(not progress)):
-            prime = int("3133" + ("3" * i) + "7")
-            if is_divisible(publickey.n, prime):
-                publickey.p = prime
+            candidate = int("3133" + ("3" * i) + "7")
+            # most of these candidates are composite; feeding a composite
+            # into the key reconstruction below would emit an invalid key
+            if not is_prime(candidate):
+                continue
+            if is_divisible(publickey.n, candidate):
+                publickey.p = candidate
                 publickey.q = publickey.n // publickey.p
                 priv_key = PrivateKey(
                     p=publickey.p,

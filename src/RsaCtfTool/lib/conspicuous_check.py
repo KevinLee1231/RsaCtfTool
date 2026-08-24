@@ -10,10 +10,11 @@ def privatekey_check(N, p, q, d, e):
         ret = True
         txt += "p IS NOT PROBABLE PRIME\n"
     if not is_prime(q):
-        txt = "q IS NOT PROBABLE PRIME\n"
+        ret = True
+        txt += "q IS NOT PROBABLE PRIME\n"
     if gcd(p, e) > 1:
         ret = True
-        txt = "p and e ARE NOT RELATIVELY PRIME\n"
+        txt += "p and e ARE NOT RELATIVELY PRIME\n"
     if gcd(q, e) > 1:
         ret = True
         txt += "q and e ARE NOT RELATIVELY PRIME\n"
