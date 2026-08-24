@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from functools import reduce, cache
+from functools import reduce
 import math
 import logging
 import random

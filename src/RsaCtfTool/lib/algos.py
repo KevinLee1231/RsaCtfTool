@@ -16,7 +16,6 @@ from RsaCtfTool.lib.number_theory import (
     powmod,
     is_square,
     next_prime,
-    A000265,
     isqrt_rem,
     inv_mod_pow_of_2,
     trivial_factorization_with_n_phi,
@@ -30,7 +29,6 @@ from RsaCtfTool.lib.number_theory import (
     convergents_from_contfrac,
     fdivmod,
     is_congruent,
-    is_divisible,
     ilogb,
     mlucas,
     iroot,
@@ -700,8 +698,10 @@ def hart(N):
     Hart's one line attack
     taken from wagstaff the joy of factoring
 
-    The first square hit normally yields a nontrivial factor; if it does
-    not (defensive), keep scanning instead of returning a trivial pair.
+    N must be an odd composite; for prime N no nontrivial split exists and
+    the scan below would run until the caller's timeout.  The first square
+    hit normally yields a nontrivial factor; if it does not (defensive),
+    keep scanning instead of returning a trivial pair.
     """
     i = 1
     while True:
