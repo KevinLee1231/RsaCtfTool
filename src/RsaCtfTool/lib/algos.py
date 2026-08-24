@@ -35,7 +35,7 @@ from RsaCtfTool.lib.number_theory import (
     iroot,
     mulmod,
 )
-from RsaCtfTool.lib.number_theory import invmod, introot, find_period, is_prime, legendre, tonelli
+from RsaCtfTool.lib.number_theory import invmod, introot, is_prime, legendre, tonelli
 
 sys.setrecursionlimit(100000)
 
@@ -106,7 +106,7 @@ def strong_pseudoprime(N):
                     return p, q
                 break
         a = next_prime(a)
-    return []
+    return None
 
 
 def close_factor(n, b, progress=True):
@@ -541,7 +541,7 @@ def factor_2PN(N, P=3):
             if p * q == N:
                 return p, q
 
-    return []
+    return None
 
 
 def factor_XYXZ(n, base=3):
@@ -630,7 +630,7 @@ class Fibonacci:
 
     def get_n_mod_d(self, n, d, use="mersenne"):
         if n < 0:
-            ValueError("Negative arguments not implemented")
+            raise ValueError("Negative arguments not implemented")
         if use == "gmpy":
             return mod(fib(n), d)
         elif use == "mersenne":
@@ -703,16 +703,20 @@ def hart(N):
     """
     Hart's one line attack
     taken from wagstaff the joy of factoring
+
+    The first square hit normally yields a nontrivial factor; if it does
+    not (defensive), keep scanning instead of returning a trivial pair.
     """
-    m = 2
     i = 1
-    while not is_square(m):
+    while True:
         s = isqrt(N * i) + 1
         m = powmod(s, 2, N)
+        if is_square(m):
+            t = isqrt(m)
+            g = gcd(s - t, N)
+            if 1 < g < N:
+                return g, N // g
         i += 1
-    t = isqrt(m)
-    g = gcd(s - t, N)
-    return g, N // g
 
 
 def kraitchik(n):
@@ -737,7 +741,7 @@ def lehman(n):
     if is_congruent(n, 2, 4):
         raise FactorizationError
 
-    for k in range(1, cuberoot(n)):
+    for k in range(1, cuberoot(n) + 1):
         nk4 = n * k << 2
         ki4 = isqrt(k) << 2
         ink4 = isqrt(nk4) + 1
@@ -749,8 +753,9 @@ def lehman(n):
                 b = isqrt(b2)
                 p = gcd(a + b, n)
                 q = gcd(a - b, n)
-                return p, q
-    return []
+                if 1 < p < n and p * q == n:
+                    return p, q
+    return None
 
 
 def lehmer_machine(n):
@@ -874,12 +879,24 @@ def pollard_P_1(n, progress=True):
                 return p, n // p
 
 
-def pollard_rho(n):
-    d, x, y, g = 1, 2, 2, lambda x: powmod(x, 2, n) - 1
-    while d == 1:
-        x, y = g(x), g(g(y))
-        d = gcd(abs(y - x), n)
-    return d
+def pollard_rho(n, max_retries=8):
+    """Floyd-cycle Pollard rho with randomised polynomials.
+
+    A degenerate run (cycle collapsed onto gcd(x-y, n) == n) restarts with
+    a fresh polynomial instead of returning the trivial factor.
+    """
+    for _ in range(max_retries):
+        c = randint(1, n - 3)
+        x = y = randint(2, n - 2)
+        d = 1
+        while d == 1:
+            x = (powmod(x, 2, n) + c) % n
+            y = (powmod(y, 2, n) + c) % n
+            y = (powmod(y, 2, n) + c) % n
+            d = gcd(abs(y - x), n)
+        if 1 < d < n:
+            return d
+    return None
 
 
 def shor(n):
@@ -899,7 +916,7 @@ def shor(n):
             2, n, 2
         ):  # from this step is that it shoul be run in a quantum computer, but we are doing a linear search.
             if powmod(a, r, n) == 1:
-                if (ar2 := powmod(a, r >> 1, n)) != -1:
+                if (ar2 := powmod(a, r >> 1, n)) != n - 1:
                     g1, g2 = gcd(ar2 - 1, n), gcd(ar2 + 1, n)
                     if (n > g1 > 1) or (n > g2 > 1):
                         p = max(max(min(n, g1), 1), max(min(n, g2), 1))
@@ -1046,15 +1063,3 @@ def difference_of_powers_factor(n):
                         if 1 < (f2 := gcd(a + b, n)) < n:
                             F.add(f2)
     return sorted(F)
-
-
-def repunit_factor(n):
-    z = find_period(n)
-    if z == -1:
-        return None
-    num_bits = n.bit_length()
-    k = num_bits // z
-    R = (1 << (k * z)) - 1
-    R //= (1 << z) - 1
-    p = gcd(n, R)
-    return p, n // p

@@ -60,16 +60,16 @@ def A000265(n):
     return n // (A135481(n) + 1)
 
 
-@cache
 def mulmod(a, b, m):
-    if b == 0:
-        return 0
-    if b == 1:
-        return a % m
-    if b & 1 == 0:
-        return mulmod((a << 1) % m, b >> 1, m)
-    else:
-        return (a + mulmod(a, b - 1, m)) % m
+    """Russian-peasant modular multiplication, O(log b), no recursion."""
+    a %= m
+    result = 0
+    while b:
+        if b & 1:
+            result = (result + a) % m
+        a = (a << 1) % m
+        b >>= 1
+    return result
 
 
 def getpubkeysz(n):
@@ -185,7 +185,9 @@ def miller_rabin(n, k=40):
     for justification
     """
 
-    if n == 2:
+    if n < 2:
+        return False
+    if n in (2, 3):
         return True
     if (n & 1 == 0) or n % 3 == 0:
         return False
@@ -275,11 +277,11 @@ def _fib(n):
 
 def ilogb(x, b):
     """
-    greatest integer l such that b**l  < = x.
+    greatest integer l such that b**l <= x (exact integer arithmetic).
     """
     log_count = 0
     while x >= b:
-        x /= b
+        x //= b
         log_count += 1
     return log_count
 
@@ -352,13 +354,11 @@ def _fac(n):
     return tmp
 
 
-@cache
 def _lucas(n):
-    if n == 0:
-        return 2
-    if n == 1:
-        return 1
-    return _lucas(n - 1) + _lucas(n - 2)
+    a, b = 2, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
 
 
 if gmpy_version > 0:
@@ -415,6 +415,7 @@ if gmpy_version > 0:
 
     isqrt = gmpy.isqrt
 else:
+    primes = _primes
     remove = _remove
     iroot = _iroot
     gcd = _gcd
@@ -614,27 +615,38 @@ def convergents_from_contfrac(frac, progress=False):
 
 def inv_mod_pow_of_2(factor, bit_count):
     """
-    its orders of magnitude faster than invert(a, 2^k)
-    code borrowed from:  https://algassert.com/post/1709
+    Inverse of an odd factor modulo 2**bit_count via Newton iteration
+    x <- x * (2 - factor*x); precision doubles each round, so this stays
+    faster than a generic extended-gcd invert.
     """
-    rest = factor & -2
-    acc = 1
-    for i in range(bit_count):
-        acc -= (acc & (1 << i)) * (rest << i)
-    mask = (1 << bit_count) - 1
-    return acc & mask
+    if not factor & 1:
+        raise ValueError("factor must be odd")
+    m = 1 << bit_count
+    factor %= m
+    acc = 1  # exact inverse modulo 2
+    t = 1
+    while t < bit_count:
+        t = min(bit_count, t << 1)
+        acc = (acc * (2 - factor * acc)) % (1 << t)
+    return acc % m
 
 
 def mlucas(v, a, n):
-    """Helper function for williams_pp1().  Multiplies along a Lucas sequence modulo n."""
-    v1, v2 = v, (v * v - 2) % n
-    while a > 0:
-        v1, v2 = (
-            ((v1 * v1 - 2) % n, (v1 * v2 - v) % n)
-            if a & 1 == 0
-            else ((v1 * v2 - v) % n, (v2 * v2 - 2) % n)
-        )
-        a >>= 1
+    """Multiply along a Lucas sequence modulo n.
+
+    Given v = V_m(P), returns V_{m*a}(P).  The Chebyshev composition law
+    V_m(V_a(x)) = V_{m*a}(x) makes this equally readable as advancing the
+    index by a or composing parameters, which is what williams_pp1() relies
+    on when it iterates v <- mlucas(v, p, n) to reach V_{seed * p^e}.
+    MSB-first binary chain keeping (V_{m*t}, V_{m*t+m}) alive; the identity
+    V_{r+s} = V_r*V_s - V_{r-s} with r-s = m supplies the cross term.
+    """
+    v1, v2 = v, (v * v - 2) % n  # t = 1: V_m, V_2m
+    for bit in bin(a)[3:]:
+        if bit == "0":
+            v1, v2 = (v1 * v1 - 2) % n, (v1 * v2 - v) % n
+        else:
+            v1, v2 = (v1 * v2 - v) % n, (v2 * v2 - 2) % n
     return v1
 
 
@@ -654,18 +666,6 @@ def is_lucas(n):
             old_u1, u1 = u1, u2
             u2 = old_u1 + u2
     return u2 == n
-
-
-def find_period(n):
-    shifted = n
-    num_bits = n.bit_length()
-    mask = (1 << num_bits) - 1
-    for period in range(1, num_bits):
-        shifted >>= 1
-        mask >>= 1
-        if ((n ^ shifted) & mask) == 0:
-            return period
-    return -1
 
 
 __all__ = [
@@ -720,5 +720,4 @@ __all__ = [
     powmod_exp_list,
     is_pow2,
     is_lucas,
-    find_period,
 ]

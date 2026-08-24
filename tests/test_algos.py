@@ -23,7 +23,6 @@ from RsaCtfTool.lib.algos import (
     pollard_strassen,
     williams_pp1,
     difference_of_powers_factor,
-    repunit_factor,
     FactorHighAndLowBitsEqual,
     Fibonacci,
     dixon,
@@ -152,9 +151,9 @@ class TestStrongPseudoprime:
         f1, f2 = result
         assert f1 * f2 == n
 
-    def test_strong_pseudoprime_returns_empty(self):
+    def test_strong_pseudoprime_returns_none(self):
         result = strong_pseudoprime(15)
-        assert result == []
+        assert result is None
 
     def test_strong_pseudoprime_carmichael_example(self):
         """Factor the Carmichael number from Wagstaff Example 10.5."""
@@ -276,18 +275,6 @@ class TestDifferenceOfPowersFactor:
         n = p * q
         result = difference_of_powers_factor(n)
         assert isinstance(result, list)
-
-
-class TestRepunitFactor:
-    """Tests for repunit_factor."""
-
-    def test_repunit_basic(self):
-        p, q = 31, 37
-        n = p * q
-        result = repunit_factor(n)
-        if result is not None:
-            f1, f2 = result
-            assert f1 * f2 == n
 
 
 class TestFactorHighAndLowBitsEqual:

@@ -15,6 +15,8 @@ class Attack(AbstractAttack):
         """Run strong_pseudoprime attack with a timeout"""
         try:
             r = strong_pseudoprime(publickey.n)
+            if r is None:
+                return None, None
             publickey.p, publickey.q = r
 
         except FactorizationError:

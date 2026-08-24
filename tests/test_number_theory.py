@@ -38,7 +38,6 @@ from RsaCtfTool.lib.number_theory import (
     A000265,
     is_pow2,
     is_lucas,
-    find_period,
     digit_sum,
     dlp_bruteforce,
     legendre,
@@ -409,14 +408,6 @@ class TestMulmod:
         assert mulmod(5, 0, 13) == 0
 
 
-class TestFindPeriod:
-    """Tests for find_period function."""
-
-    def test_find_period_basic(self):
-        assert find_period(7) == 1
-        assert find_period(3) == 1
-
-
 class TestIlgb:
     """Tests for ilogb function."""
 
@@ -461,8 +452,10 @@ class TestInvModPowOf2:
     """Tests for inv_mod_pow_of_2 function."""
 
     def test_inv_mod_pow_of_2_basic(self):
+        # 3 * 171 = 513 = 2*256 + 1 -> 171 is the inverse of 3 mod 2^8
         result = inv_mod_pow_of_2(3, 8)
-        assert result == 215
+        assert result == 171
+        assert (5 * inv_mod_pow_of_2(5, 12)) % 4096 == 1
 
 
 class TestMlucas:
