@@ -20,18 +20,15 @@ classifiers = [
     "Topic :: Security :: Cryptography",
 ]
 dependencies = [
-    "six",
-    "cryptography==39.0.1",
-    "urllib3==1.26.5",
-    "requests==2.25.1",
-    "gmpy2==2.2.1",
-    "pycryptodome==3.10.4",
+    "cryptography>=39",
+    "urllib3>=1.26",
+    "requests>=2.25",
+    "gmpy2>=2.1.15",
+    "pycryptodome>=3.10",
     "tqdm",
     "z3-solver",
-    "bitarray",
-    "psutil==5.9.4",
+    "psutil>=5.9",
     "factordb-pycli",
-    "pytest"
 ]
 
 [project.urls]
@@ -40,8 +37,8 @@ Download = "https://github.com/RsaCtfTool/RsaCtfTool/tarball/0.1.0"
 
 [project.optional-dependencies]
 # SageMath is not pip-installable; install it separately if needed
-optional = ["wolframalpha", "gmpy2>=2.1.15"]
-dev = ["impactguard"]
+optional = ["wolframalpha"]
+dev = ["pytest", "ruff"]
 
 [project.scripts]
 rsacrack = "RsaCtfTool.main:main"
