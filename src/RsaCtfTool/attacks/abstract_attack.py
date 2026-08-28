@@ -9,9 +9,9 @@ from typing import List, Any, Optional, Tuple
 import shutil
 from RsaCtfTool.lib.utils import timeout, TimeoutError
 
-# Repository root (the directory that contains the package), used to
-# resolve declared helper scripts.
-_ROOTPATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")), TimeoutError
+# Package root (the directory containing the sage/ helper scripts),
+# used to resolve declared helper scripts.
+_ROOTPATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
 class AbstractAttack(object):
