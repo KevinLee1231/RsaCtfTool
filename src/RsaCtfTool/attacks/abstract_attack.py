@@ -13,6 +13,12 @@ from RsaCtfTool.lib.utils import timeout, TimeoutError
 # used to resolve declared helper scripts.
 _ROOTPATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
+# Sage-backed attacks pay interpreter startup plus lattice/ECM/QS runtimes
+# that the bare 60s CLI default cuts short; give them the same 180s budget
+# the heavier pure-Python attacks (dixon, quadratic_sieve, pollard_rho) use.
+# qicheng keeps its own higher floor (900s).
+SAGE_MIN_TIMEOUT = 180
+
 
 class AbstractAttack(object):
     speed_enum = {"slow": 0, "medium": 1, "fast": 2}

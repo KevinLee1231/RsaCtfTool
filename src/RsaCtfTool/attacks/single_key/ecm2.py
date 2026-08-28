@@ -3,14 +3,14 @@
 
 import subprocess
 import os
-from RsaCtfTool.attacks.abstract_attack import AbstractAttack
+from RsaCtfTool.attacks.abstract_attack import AbstractAttack, SAGE_MIN_TIMEOUT
 from RsaCtfTool.lib.utils import rootpath, TimeoutError, terminate_proc_tree
 from RsaCtfTool.lib.number_theory import invert, powmod
 
 
 class Attack(AbstractAttack):
     def __init__(self, timeout=60):
-        super().__init__(timeout)
+        super().__init__(max(timeout, SAGE_MIN_TIMEOUT))
         self.speed = AbstractAttack.speed_enum["medium"]
         self.required_binaries = ["sage"]
         self.required_scripts = ["sage/ecm2.sage"]

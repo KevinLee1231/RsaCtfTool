@@ -3,7 +3,7 @@
 
 import subprocess
 import logging
-from RsaCtfTool.attacks.abstract_attack import AbstractAttack
+from RsaCtfTool.attacks.abstract_attack import AbstractAttack, SAGE_MIN_TIMEOUT
 from RsaCtfTool.lib.keys_wrapper import PrivateKey
 from RsaCtfTool.lib.utils import rootpath
 from RsaCtfTool.lib.is_roca_test import is_roca_vulnerable
@@ -11,7 +11,7 @@ from RsaCtfTool.lib.is_roca_test import is_roca_vulnerable
 
 class Attack(AbstractAttack):
     def __init__(self, timeout=60):
-        super().__init__(timeout)
+        super().__init__(max(timeout, SAGE_MIN_TIMEOUT))
         self.speed = AbstractAttack.speed_enum["slow"]
         self.required_binaries = ["sage"]
         self.required_scripts = ["sage/roca_attack.py"]

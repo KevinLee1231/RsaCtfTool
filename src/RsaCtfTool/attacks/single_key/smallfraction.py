@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import subprocess
-from RsaCtfTool.attacks.abstract_attack import AbstractAttack
+from RsaCtfTool.attacks.abstract_attack import AbstractAttack, SAGE_MIN_TIMEOUT
 from RsaCtfTool.lib.utils import rootpath
 
 
 class Attack(AbstractAttack):
     def __init__(self, timeout=60):
-        super().__init__(timeout)
+        super().__init__(max(timeout, SAGE_MIN_TIMEOUT))
         self.speed = AbstractAttack.speed_enum["slow"]
         self.required_binaries = ["sage"]
         self.required_scripts = ["sage/smallfraction.sage"]
