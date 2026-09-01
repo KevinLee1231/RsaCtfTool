@@ -16,7 +16,9 @@ class Attack(AbstractAttack):
 
 
     def can_run(self):
-        return os.environ.get("WA_API_KEY") is not None
+        # Keep the parent binary/script preflight; the API key is an
+        # additional requirement, not a replacement for the binary check.
+        return super().can_run() and os.environ.get("WA_API_KEY") is not None
 
     def wa_query_factors(self, n, safe=True):
         tmp = []

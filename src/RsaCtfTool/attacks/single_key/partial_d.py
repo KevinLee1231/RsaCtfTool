@@ -12,6 +12,7 @@ class Attack(AbstractAttack):
         super().__init__(max(timeout, SAGE_MIN_TIMEOUT))
         self.speed = AbstractAttack.speed_enum["medium"]
         self.required_binaries = ["sage"]
+        self.required_scripts = ["sage/partial_d.sage"]
 
     def attack(self, publickey, cipher=[], progress=True):
         """Run partial_d attack with a timeout"""

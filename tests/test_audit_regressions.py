@@ -193,3 +193,51 @@ class TestSameNHugeE:
         pubs, ciphers = self._keys_and_ciphers(m_big, 5, 15)
         _, plains = Attack(timeout=30).attack(pubs, ciphers)
         assert plains is None or all(p is None for p in plains)
+
+
+class TestSageHelperScriptPreflight:
+    """Every attack that shells out to a sage helper script must declare
+    it in required_scripts so a missing script is caught by can_run()."""
+
+    SAGE_SUBPROCESS_ATTACKS = {
+        "ecm": "sage/ecm.sage",
+        "ecm2": "sage/ecm2.sage",
+        "qs": "sage/qs.sage",
+        "boneh_durfee": "sage/boneh_durfee.sage",
+        "smallfraction": "sage/smallfraction.sage",
+        "small_crt_exp": "sage/small_crt_exp.sage",
+        "binary_polynomial_factoring": "sage/binary_polynomial_factoring.sage",
+        "partial_d": "sage/partial_d.sage",
+        "lattice": "sage/lattice.sage",
+        "qicheng": "sage/qicheng.sage",
+        "roca": "sage/roca_attack.py",
+    }
+
+    def test_scripts_declared_and_present(self):
+        import importlib
+        import os
+        from RsaCtfTool.attacks.abstract_attack import _ROOTPATH
+
+        for module_name, script in self.SAGE_SUBPROCESS_ATTACKS.items():
+            module = importlib.import_module(
+                f"RsaCtfTool.attacks.single_key.{module_name}"
+            )
+            attack = module.Attack(timeout=1)
+            assert script in attack.required_scripts, module_name
+            assert os.path.isfile(os.path.join(_ROOTPATH, script)), script
+
+
+class TestWolframAlphaPreflight:
+    def test_api_key_alone_does_not_enable(self, monkeypatch):
+        import shutil
+        from RsaCtfTool.attacks.single_key.wolframalpha import Attack
+
+        monkeypatch.setenv("WA_API_KEY", "dummy-key")
+        binary_present = shutil.which("wolframalpha") is not None
+        assert Attack().can_run() is binary_present
+
+    def test_missing_api_key_disables(self, monkeypatch):
+        from RsaCtfTool.attacks.single_key.wolframalpha import Attack
+
+        monkeypatch.delenv("WA_API_KEY", raising=False)
+        assert Attack().can_run() is False

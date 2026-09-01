@@ -15,6 +15,7 @@ class Attack(AbstractAttack):
         super().__init__(max(timeout, 900))
         self.speed = AbstractAttack.speed_enum["medium"]
         self.required_binaries = ["sage"]
+        self.required_scripts = ["sage/qicheng.sage"]
 
     def attack(self, publickey, cipher=[], progress=True):
         """Qi Cheng - A New Class of Unsafe Primes"""
