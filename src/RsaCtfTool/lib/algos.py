@@ -130,7 +130,11 @@ def close_factor(n, b, progress=True):
     mu = invmod(powmod(2, phi_approx, n), n)
     fac = powmod(2, b, n)
 
-    for i in tqdm(range(0, (b * b) + 1), disable=(not progress)):
+    # Baby-step/giant-step: candidate corrections are e = j - i*b with
+    # j in [0, b] (the table) and i in [0, b], together covering
+    # e in [-b^2, b].  Scanning i past b cannot match any new table
+    # entry, so the old b*b iteration bound was unreachable dead range.
+    for i in tqdm(range(0, b + 1), disable=(not progress)):
         if mu in look_up:
             phi = phi_approx + look_up[mu] - (i * b)
             r = trivial_factorization_with_n_phi(n, phi)

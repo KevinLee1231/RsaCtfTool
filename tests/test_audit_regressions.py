@@ -400,3 +400,45 @@ class TestFifthAuditRegressions:
         priv, plain = factordb_attack.Attack().attack(SimpleNamespace(n=105, e=7))
         assert priv is None
         assert plain is None
+
+
+class TestFifthAuditPerformanceFixes:
+    """Performance-only fixes from the fifth audit; results must stay
+    equivalent (or, for smallq, match its documented q < 100000 bound)."""
+
+    def test_fermat_number_gcd_modular_equivalence(self):
+        # gcd(F_x, n) == gcd(2^(2^x) mod n + 1, n) - the identity the
+        # attack now relies on instead of building the full Fermat number.
+        from RsaCtfTool.lib.number_theory import gcd, powmod
+
+        rng = random.Random(99)
+        n = rand_semiprime(rng, 64)
+        for x in range(2, 13):
+            f = (1 << (1 << x)) + 1
+            assert gcd(f, n) == gcd(powmod(2, 1 << x, n) + 1, n)
+
+    def test_close_factor_hits_close_primes(self):
+        from RsaCtfTool.lib.algos import close_factor
+        from RsaCtfTool.lib.number_theory import next_prime
+
+        base = 1 << 128
+        p = int(next_prime(base - 10**5))
+        q = int(next_prime(base + 10**5))
+        r = close_factor(p * q, 2 * 10**5, progress=False)
+        assert r is not None
+        assert sorted(r) == sorted([p, q])
+
+    def test_load_system_consts_is_cached(self):
+        from RsaCtfTool.lib.system_primes import load_system_consts
+
+        first = load_system_consts()
+        assert first is load_system_consts()
+
+    def test_smallq_finds_factor_below_bound(self):
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+        from RsaCtfTool.attacks.single_key.smallq import Attack
+
+        key_data = RSA.construct((54311 * 1009, 65537)).publickey().exportKey()
+        priv, _ = Attack().attack(PublicKey(key_data), progress=False)
+        assert priv is not None

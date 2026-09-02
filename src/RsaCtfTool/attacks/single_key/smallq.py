@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack
-from RsaCtfTool.lib.number_theory import primes, is_divisible
+from RsaCtfTool.lib.number_theory import erathostenes_sieve, is_divisible
 
 
 class Attack(AbstractAttack):
@@ -12,7 +12,11 @@ class Attack(AbstractAttack):
 
     def attack(self, publickey, cipher=[], progress=True):
         """Try an attack where q < 100,000, from RsaCtfTool.BKPCTF2016 - sourcekris"""
-        for prime in primes(100000):
+        # erathostenes_sieve(n) is "primes below n" on every backend;
+        # the gmpy-backed primes() binding means "first n primes" (largest
+        # ~1.3M for n=100000), which both overran the documented bound and
+        # made this loop ten times longer than intended.
+        for prime in erathostenes_sieve(100000):
             if is_divisible(publickey.n, prime):
                 publickey.q = prime
                 publickey.p = publickey.n // publickey.q

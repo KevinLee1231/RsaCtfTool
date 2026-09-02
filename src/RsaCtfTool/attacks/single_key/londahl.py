@@ -10,7 +10,11 @@ class Attack(AbstractAttack):
     def __init__(self, timeout=60):
         super().__init__(timeout)
         self.speed = AbstractAttack.speed_enum["slow"]
-        self.londahl_b = 10000000
+        # Table plus scan are each b steps (~2s each for a 2048-bit n);
+        # 10^6 covers |p - q| up to ~2*10^6 inside the default timeout,
+        # while the previous 10^7 default built a >2 GB table and never
+        # reached the scan phase before timing out.
+        self.londahl_b = 1000000
 
     def attack(self, publickey, cipher=[], progress=True):
         """Do nothing, used for multi-key attacks that succeeded so we just print the
