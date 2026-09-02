@@ -158,6 +158,10 @@ def _invmod(a, m):
     a, x, u = a % m, 0, 1
     while a:
         x, u, m, a = u, x - (m // a) * u, a, m % a
+    if m != 1:
+        # Match gmpy2's contract: no inverse -> ZeroDivisionError, never
+        # a silently wrong value.
+        raise ZeroDivisionError("invert() no inverse exists")
     return x
 
 
@@ -269,7 +273,7 @@ def _primes_yield_gmpy(n):
 def _fib(n):
     a, b = 0, 1
     i = 0
-    while i <= n:
+    while i < n:
         a, b = b, a + b
         i += 1
     return a
@@ -335,13 +339,9 @@ def _is_congruent(a, b, m):
 
 
 def _powmod(b, e, m):
-    r = 1
-    b %= m
-    while e > 0:
-        r = ((r * b) % m) * (e & 1) + r * ((e + 1) & 1)
-        e >>= 1
-        b = (b * b) % m
-    return r
+    # Three-arg pow also handles negative exponents via the modular
+    # inverse, matching gmpy2.powmod on both counts.
+    return pow(b, e, m)
 
 
 def _fac(n):

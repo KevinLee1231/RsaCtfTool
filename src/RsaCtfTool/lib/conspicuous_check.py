@@ -30,23 +30,28 @@ def privatekey_check(N, p, q, d, e):
     if not (q > 2 ** ((nlen >> 1) - 1)):
         ret = True
         txt += "q IS NOT > 2^(nlen/2 - 1)\n"
+    lam = lcm(p - 1, q - 1)
     if not (d > 2 ** (nlen >> 1)):
         ret = True
         txt += "d IS NOT > 2^(nlen/2)\n"
-    if not (d < lcm(p - 1, q - 1)):
+    if not (d < (p - 1) * (q - 1)):
+        # Both the lambda-inverse (standard) and the phi-inverse (what
+        # this tool emits) stay below phi; only oversized exponents fail.
         ret = True
-        txt += "d IS NOT < lcm(p-1,q-1)\n"
+        txt += "d IS NOT < (p-1)*(q-1)\n"
     unc = (gcd(e - 1, p - 1) + 1) * (gcd(e - 1, q - 1) + 1)
     if unc > 9:
         ret = True
         txt += "The number of unconcealed messages is %d > min\n" % unc
     try:
-        inv = invert(e, lcm(p - 1, q - 1))
+        inv = invert(e, lam)
     except ZeroDivisionError:
         inv = None
         ret = True
         txt += "e IS NOT INVERTIBLE mod lcm(p-1,q-1)\n"
-    if d != inv:
+    if (e * d) % lam != 1:
+        # The decryption contract is e*d == 1 (mod lambda); it accepts both
+        # the lambda-inverse and the larger phi-inverse as valid d values.
         ret = True
         txt += "d IS NOT e^(-1) mod lcm(p-1,q-1)"
     return (ret, txt)

@@ -29,7 +29,14 @@ class Attack(AbstractAttack):
                     low = mid + 1
                 else:
                     high = mid
+            # m^e was reduced mod n, so a non-perfect e-th root means the
+            # plaintext is not actually small: reporting it would be a
+            # bogus result that also stops the remaining attacks.
+            if pow(low, publickey.e) != cipher_int:
+                continue
             plain.append(low.to_bytes((low.bit_length() + 7) // 8, byteorder="big"))
+        if not plain:
+            return None, None
         return None, plain
 
     def test(self):

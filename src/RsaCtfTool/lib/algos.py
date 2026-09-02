@@ -567,7 +567,11 @@ def fermat(n):
         c += 2
     a = (c - 1) >> 1
     b = isqrt(b2)
-    return a - b, a + b
+    p, q = a - b, a + b
+    if p == 1:
+        # Only the trivial representation (1, n) exists: n is prime.
+        return None
+    return p, q
 
 
 def InverseInverseSqrt2exp(n, k):
@@ -726,6 +730,9 @@ def kraitchik(n):
                 z, w = x + y, x - y
                 if z % n != 0 and w % n != 0:
                     return gcd(z, n), gcd(w, n)
+                # Only the trivial representation exists: n is prime.
+                # Continuing would scan x forever without another square.
+                return None
             y2 -= n
         x += 1
 
@@ -764,6 +771,9 @@ def lehmer_machine(n):
     while not is_square(n + y**2):
         y += 1
     x = isqrt(n + y**2)
+    if x - y == 1:
+        # Only the trivial representation (1, n) exists: n is prime.
+        return None
     return x - y, x + y
 
 

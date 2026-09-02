@@ -14,7 +14,10 @@ class Attack(AbstractAttack):
     def attack(self, publickey, cipher=[], progress=True):
         """Run kraitchik attack with a timeout"""
         try:
-            publickey.p, publickey.q = kraitchik(publickey.n)
+            r = kraitchik(publickey.n)
+            if r is None:
+                return None, None
+            publickey.p, publickey.q = r
         except FactorizationError:
             return None, None
 

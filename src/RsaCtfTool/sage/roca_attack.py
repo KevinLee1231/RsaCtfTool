@@ -1,7 +1,7 @@
 import sys
 import traceback
 from pathlib import Path
-from sage.all import inverse_mod, PolynomialRing, floor, Zmod
+from sage.all import Integer, inverse_mod, PolynomialRing, floor, Zmod
 
 
 script_path = Path(sys.argv[0]).resolve()
@@ -65,8 +65,10 @@ def roca(n):
     order = Zmod(M_prime)(65537).multiplicative_order()
     inf = a3 >> 1
     sup = (a3 + order) >> 1
-    # Upper bound for the small root x0
-    XX = floor(2 * n**0.5 / M_prime)
+    # Upper bound for the small root x0. Integer sqrt: the previous
+    # float-based n**0.5 overflows for n >= 2**1024, silently failing
+    # every key in the 992-1952 bit ROCA tiers.
+    XX = floor(2 * Integer(n).sqrt() / M_prime)
     invmod_Mn = inverse_mod(M_prime, n)
     # Create the polynom f(x)
     F = PolynomialRing(Zmod(n), implementation="NTL", names=("x",))
