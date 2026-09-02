@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import logging
-import tempfile
 import binascii
 import subprocess
 from cryptography.hazmat.primitives import serialization
@@ -116,9 +115,13 @@ class PrivateKey(object):
         if self.d is not None:
             return
         if self.phi is not None and self.e is not None:
+            # The phi-inverse also satisfies e*d == 1 (mod lambda) since
+            # lambda divides phi, and RSA.construct validates against phi.
+            # gmpy2 raises ZeroDivisionError (not ValueError) when no
+            # inverse exists.
             try:
                 self.d = int(invert(e, self.phi))
-            except ValueError:
+            except (ValueError, ZeroDivisionError):
                 logger.error("[!] e^d==1 inversion error, check your math.")
 
     def _construct_key_from_components(self):
@@ -199,6 +202,7 @@ class PrivateKey(object):
         :param n: n from public key
         """
         self.key = None
+        self.filename = filename
         self._init_fields(p, q, e, n, d, phi)
         self._compute_phi()
         self._compute_d(e)
@@ -223,76 +227,30 @@ class PrivateKey(object):
 
         plain = []
         for c in cipher:
+            # PKCS#1 OAEP first: it validates its own padding and fails
+            # cleanly on anything else.
+            try:
+                rsakey = RSA.importKey(str(self))
+                plain.append(PKCS1_OAEP.new(rsakey).decrypt(c))
+                continue
+            except Exception:
+                pass
+
+            # Textbook RSA with the recovered exponent.
             if self.n is not None and self.d is not None:
                 try:
                     cipher_int = int.from_bytes(c, "big")
                     m_hex = hex(powmod(cipher_int, self.d, self.n))[2:]
                     if len(m_hex) % 2 == 1:
                         m_hex = f"0{m_hex}"
-                    m = binascii.unhexlify(m_hex)
-                    plain.append(m)
+                    plain.append(binascii.unhexlify(m_hex))
+                    continue
                 except Exception:
                     pass
 
-            try:
-                rsakey = RSA.importKey(str(self))
-                rsakey = PKCS1_OAEP.new(rsakey)
-                plain.append(rsakey.decrypt(c))
-            except Exception:
-                pass
-
-            try:
-                tmp_priv_key = tempfile.NamedTemporaryFile()
-                with open(tmp_priv_key.name, "wb") as tmpfd:
-                    tmpfd.write(str(self).encode("utf8"))
-                tmp_priv_key_name = tmp_priv_key.name
-
-                tmp_cipher = tempfile.NamedTemporaryFile()
-                with open(tmp_cipher.name, "wb") as tmpfd:
-                    tmpfd.write(c)
-                tmp_cipher_name = tmp_cipher.name
-
-                with open("/dev/null") as DN:
-                    try:
-                        openssl_result = subprocess.check_output(
-                            [
-                                "openssl",
-                                "rsautl",
-                                "-raw",
-                                "-decrypt",
-                                "-in",
-                                "-oaep",
-                                tmp_cipher_name,
-                                "-inkey",
-                                tmp_priv_key_name,
-                            ],
-                            stderr=DN,
-                            timeout=30,
-                        )
-                        plain.append(openssl_result)
-                    except Exception:
-                        pass
-
-                    try:
-                        openssl_result = subprocess.check_output(
-                            [
-                                "openssl",
-                                "rsautl",
-                                "-raw",
-                                "-decrypt",
-                                "-in",
-                                tmp_cipher_name,
-                                "-inkey",
-                                tmp_priv_key_name,
-                            ],
-                            stderr=DN,
-                            timeout=30,
-                        )
-                        plain.append(openssl_result)
-                    except Exception:
-                        pass
-            except Exception:
-                plain.append(cipher)
+            # Nothing worked - keep the raw ciphertext so the caller sees
+            # an entry for this input instead of a silently dropped one.
+            plain.append(c)
         return plain
 
     def __str__(self):

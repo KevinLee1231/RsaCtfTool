@@ -8,9 +8,8 @@ import inspect
 import traceback
 from RsaCtfTool.lib.keys_wrapper import PublicKey, PrivateKey
 from RsaCtfTool.lib.exceptions import FactorizationError
-from RsaCtfTool.lib.utils import print_results, TimeoutError
+from RsaCtfTool.lib.utils import print_results, timeout, TimeoutError
 from RsaCtfTool.lib.fdb import send2fdb
-from RsaCtfTool.lib.crypto_wrapper import bytes_to_long, long_to_bytes
 from RsaCtfTool.lib.number_theory import is_prime, isqrt, gcd
 
 
@@ -24,7 +23,6 @@ class RSAAttack(object):
         self.cipher = args.decrypt if args.decrypt is not None else None
         self.priv_key = None
         self.priv_keys = []
-        self.partial_priv_key = None
         self.decrypted = []
         self.implemented_attacks = []
 
@@ -53,12 +51,6 @@ class RSAAttack(object):
         """Print extra output according to requested action.
         Decrypt data if needed.
         """
-        # check and print resulting private key
-        if self.partial_priv_key is not None and self.args.private:
-            self.logger.info("d: %i" % self.partial_priv_key.key.d)
-            self.logger.info("e: %i" % self.partial_priv_key.key.e)
-            self.logger.info("n: %i" % self.partial_priv_key.key.n)
-
         # If we wanted to decrypt, do it now
         if self.cipher:
             if self.priv_key is not None:
@@ -78,12 +70,7 @@ class RSAAttack(object):
                         if not isinstance(decrypted, list):
                             decrypted = [decrypted]
 
-                    self.decrypted = self.decrypted + decrypted
-            elif self.partial_priv_key is not None:
-                # needed, if n is prime and so we can't calc p and q
-                enc_msg = bytes_to_long(self.cipher)
-                dec_msg = self.partial_priv_key.key._decrypt(enc_msg)
-                self.decrypted.append(long_to_bytes(dec_msg))
+                        self.decrypted = self.decrypted + decrypted
 
         print_results(self.args, publickeyname, self.priv_key, self.decrypted)
 
@@ -101,7 +88,7 @@ class RSAAttack(object):
                 ok = False
             if gcd(publickey.n, publickey.e) > 1:
                 self.logger.error(
-                    f"[!] Public key: {publickey.filename} modulus is coprime with exponent."
+                    f"[!] Public key: {publickey.filename} modulus is NOT coprime with exponent."
                 )
                 ok = False
             if publickey.n <= 3:
@@ -178,10 +165,14 @@ class RSAAttack(object):
         if self.args.sendtofdb:
             if self.priv_key is not None:
                 if type(self.priv_key) is PrivateKey:
-                    send2fdb(self.priv_key.n, [self.priv_key.p, self.priv_key.q])
+                    # Keys without recovered factors (e.g. d-only keys from
+                    # nonRSA) would report "None" factors to the database.
+                    if self.priv_key.p is not None and self.priv_key.q is not None:
+                        send2fdb(self.priv_key.n, [self.priv_key.p, self.priv_key.q])
                 elif len(self.priv_key) > 0:
                     for privkey in list(set(self.priv_key)):
-                        send2fdb(privkey.n, [privkey.p, privkey.q])
+                        if privkey.p is not None and privkey.q is not None:
+                            send2fdb(privkey.n, [privkey.p, privkey.q])
 
     def attack_multiple_keys(self, publickeys, attacks_list):
         """Run attacks on multiple keys"""
@@ -217,9 +208,18 @@ class RSAAttack(object):
                     if not attack_module.can_run():
                         continue
 
-                    self.priv_key, decrypted = attack_module.attack(
-                        self.publickey, self.cipher
-                    )
+                    # Same timeout wrapper and error hygiene the single-key
+                    # loop gets; previously a plain exception in any
+                    # multi-key attack aborted the whole run.
+                    with timeout(attack_module.timeout):
+                        self.priv_key, decrypted = attack_module.attack(
+                            self.publickey, self.cipher
+                        )
+
+                    if self.priv_key is not None and not isinstance(
+                        self.priv_key, list
+                    ):
+                        self._reject_unusable_priv_key()
 
                     if decrypted is not None and decrypted != []:
                         if isinstance(decrypted, list):
@@ -235,6 +235,17 @@ class RSAAttack(object):
                     self.logger.warning("Timeout")
                 except FactorizationError:
                     self.logger.warning("FactorizationError")
+                except NotImplementedError:
+                    self.logger.warning("[!] This attack module is not implemented yet")
+                except KeyboardInterrupt:
+                    self.logger.warning("[!] Interrupted")
+                except Exception as e:
+                    self.logger.error(
+                        "[!] An exception has occurred during the attack. Please check your inputs."
+                    )
+                    self.logger.error(
+                        f"[!] {attack_module.get_name()}: {type(e).__name__}: {e}"
+                    )
 
         public_key_name = ",".join(publickeys)
         self.print_results_details(public_key_name)
@@ -301,6 +312,19 @@ class RSAAttack(object):
         if self.args.show_modulus:
             self.logger.info("modulus: %s", self.args.n)
 
+    def _reject_unusable_priv_key(self):
+        """Drop a recovered key that carries neither a constructed key
+        object nor a bare private exponent - an empty shell that would
+        otherwise be reported as a success and stop the attack loop.
+        """
+        if self.priv_key is None:
+            return
+        if (
+            getattr(self.priv_key, "d", None) is None
+            and getattr(self.priv_key, "key", None) is None
+        ):
+            self.priv_key = None
+
     def _execute_single_attack(self, attack_module):
         if not attack_module.can_run():
             return False
@@ -308,6 +332,7 @@ class RSAAttack(object):
             self.priv_key, decrypted = attack_module.attack_wrapper(
                 self.publickey, self.cipher
             )
+            self._reject_unusable_priv_key()
         else:
             self.logger.warning(
                 "[!] No need to factorize since you provided a prime factor..."

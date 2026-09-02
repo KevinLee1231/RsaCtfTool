@@ -23,6 +23,12 @@ class Attack(AbstractAttack):
             n = publickey.n
             pq = getfdb(n)
             if pq[0] != n:
+                if len(pq) != 2:
+                    self.logger.error(
+                        "[!] factordb returned %d factors; only semiprime moduli are supported."
+                        % len(pq)
+                    )
+                    return None, None
                 p, q = pq
                 if publickey.n != int(p) * int(q):
                     return None, None
@@ -34,6 +40,8 @@ class Attack(AbstractAttack):
                     e=int(publickey.e),
                     n=int(publickey.n),
                 )
+                if priv_key.key is None:
+                    return None, None
                 return priv_key, None
             else:
                 self.logger.error(

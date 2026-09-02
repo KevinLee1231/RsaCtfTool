@@ -27,11 +27,17 @@ class Attack(AbstractAttack):
                     ["sage", f"{rootpath}/sage/ecm2.sage", str(publickey.n)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
+                    # Own session: os.getpgid(child) then names the child
+                    # itself, so the timeout cleanup below cannot escalate
+                    # to killing this tool's own process group.
+                    start_new_session=True,
                 )
                 sage_proc.wait(timeout=self.timeout)
                 stdout, stderr = sage_proc.communicate()
-                sageresult = stdout
-                sageresult = sageresult[1:-2].split(b", ")
+                sageresult = stdout.strip()
+                if sageresult.startswith(b"(") and sageresult.endswith(b")"):
+                    sageresult = sageresult[1:-1]
+                sageresult = sageresult.split(b",") if sageresult else []
             except (
                 subprocess.CalledProcessError,
                 subprocess.TimeoutExpired,

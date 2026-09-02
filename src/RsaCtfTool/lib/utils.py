@@ -130,9 +130,12 @@ def _print_decrypt_results(args, decrypt, logger):
                     logger.error(f"Can't write output file : {args.output}")
             print_decrypted_res(c, logger)
             if len(c) > 3 and c[0] == 0 and c[1] == 2:
-                nc = c[c[2:].index(0) + 2:]
-                logger.info("\nPKCS#1.5 padding decoded!")
-                print_decrypted_res(nc, logger)
+                with contextlib.suppress(ValueError):
+                    # Malformed data whose padding never reaches a 0
+                    # separator must not crash the result printer.
+                    nc = c[c[2:].index(0) + 2:]
+                    logger.info("\nPKCS#1.5 padding decoded!")
+                    print_decrypted_res(nc, logger)
 
 
 def print_results(args, publickey, private_key, decrypt):
@@ -186,12 +189,20 @@ class timeout(contextlib.ContextDecorator):
         self.timeout_message = timeout_message
         self.suppress = bool(suppress_timeout_errors)
         self.logger = logging.getLogger("global_logger")
+        self.timer = None
+        self._old_handler = None
 
     def _timeout_handler(self, _signum, _frame):
         self.logger.warning("[!] Timeout.")
         raise TimeoutError(self.timeout_message)
 
     def __enter__(self):
+        # The CLI help promises that values < 1 behave like MAX_INT, i.e.
+        # no timeout at all - never arm a negative-interval Timer that
+        # would fire immediately.
+        if self.seconds < 1:
+            return self
+        self._old_handler = signal.getsignal(signal.SIGTERM)
         signal.signal(signal.SIGTERM, self._timeout_handler)
 
         def alarm_func():  # send signal
@@ -203,7 +214,14 @@ class timeout(contextlib.ContextDecorator):
         self.timer.start()
 
     def __exit__(self, exc_type, _exc_val, _exc_tb):
-        self.timer.cancel()
+        if self.timer is not None:
+            self.timer.cancel()
+            self.timer = None
+        if self._old_handler is not None:
+            # Restore the previous handler so a later SIGTERM terminates
+            # the process instead of raising our TimeoutError forever.
+            signal.signal(signal.SIGTERM, self._old_handler)
+            self._old_handler = None
         if self.suppress and exc_type is TimeoutError:
             return True
 

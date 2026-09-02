@@ -10,6 +10,7 @@ import pytest
 
 from RsaCtfTool.lib.algos import euler, hart, lehman, mlucas, pollard_rho
 from RsaCtfTool.lib.conspicuous_check import privatekey_check
+from RsaCtfTool.lib.keys_wrapper import PrivateKey
 from RsaCtfTool.lib.number_theory import (
     ilogb,
     inv_mod_pow_of_2,
@@ -241,3 +242,161 @@ class TestWolframAlphaPreflight:
 
         monkeypatch.delenv("WA_API_KEY", raising=False)
         assert Attack().can_run() is False
+
+
+class TestFifthAuditRegressions:
+    """Fixes from the fifth audit pass (2026-09)."""
+
+    def test_conspicuous_accepts_phi_inverse(self):
+        # The tool emits d = e^-1 mod phi; lambda | phi so it also
+        # satisfies e*d == 1 (mod lambda). This used to be a false flag.
+        p, q, e = 61, 53, 17
+        d = pow(e, -1, (p - 1) * (q - 1))
+        _, txt = privatekey_check(p * q, p, q, d, e)
+        assert "d IS NOT e^(-1)" not in txt
+        assert "d IS NOT < " not in txt
+
+    def test_conspicuous_accepts_lambda_inverse(self):
+        # Standard implementations emit d = e^-1 mod lambda.
+        from math import lcm as _lcm
+
+        p, q, e = 61, 53, 17
+        d = pow(e, -1, _lcm(p - 1, q - 1))
+        _, txt = privatekey_check(p * q, p, q, d, e)
+        assert "d IS NOT e^(-1)" not in txt
+
+    def test_conspicuous_still_rejects_wrong_d(self):
+        p, q, e = 61, 53, 17
+        _, txt = privatekey_check(p * q, p, q, 12345, e)
+        assert "d IS NOT e^(-1)" in txt
+
+    def test_fermat_prime_modulus_returns_none(self):
+        from RsaCtfTool.lib.algos import fermat
+
+        assert fermat(101) is None
+
+    def test_lehmer_machine_prime_modulus_returns_none(self):
+        from RsaCtfTool.lib.algos import lehmer_machine
+
+        assert lehmer_machine(101) is None
+
+    def test_kraitchik_prime_modulus_returns_none(self):
+        from RsaCtfTool.lib.algos import kraitchik
+
+        assert kraitchik(101) is None
+
+    def test_fermat_composite_still_factors(self):
+        from RsaCtfTool.lib.algos import fermat
+
+        p, q = 101, 103
+        assert tuple(sorted(fermat(p * q))) == (p, q)
+
+    def test_private_key_non_coprime_e_is_inert_not_fatal(self):
+        # gcd(e, phi) != 1 used to raise ZeroDivisionError out of the
+        # constructor; the key must come out simply unusable instead.
+        priv = PrivateKey(p=5, q=7, e=4, n=35)
+        assert priv.d is None
+        assert priv.key is None
+
+    def test_timeout_nonpositive_disables_timer(self):
+        import time as _time
+
+        from RsaCtfTool.lib.utils import timeout as _timeout
+
+        with _timeout(0):
+            _time.sleep(0.2)  # must not fire an instant timeout
+
+    def test_timeout_restores_sigterm_handler(self):
+        import signal as _signal
+
+        from RsaCtfTool.lib.utils import timeout as _timeout
+
+        before = _signal.getsignal(_signal.SIGTERM)
+        with _timeout(30):
+            pass
+        assert _signal.getsignal(_signal.SIGTERM) is before
+
+    def test_fib_fallback_matches_definition(self):
+        from RsaCtfTool.lib.number_theory import _fib
+
+        assert [_fib(i) for i in range(8)] == [0, 1, 1, 2, 3, 5, 8, 13]
+
+    def test_invmod_fallback_raises_without_inverse(self):
+        from RsaCtfTool.lib.number_theory import _invmod
+
+        with pytest.raises(ZeroDivisionError):
+            _invmod(4, 100)
+
+    def test_decrypt_emits_one_result_per_cipher(self, small_rsa_key):
+        # OAEP fails on raw-RSA ciphertexts, so exactly the textbook
+        # result is returned (the old code appended duplicates).
+        key = small_rsa_key
+        priv = PrivateKey(p=key["p"], q=key["q"], e=key["e"], n=key["n"])
+        cipher_int = pow(42, key["e"], key["n"])
+        cb = cipher_int.to_bytes((cipher_int.bit_length() + 7) // 8, "big")
+        out = priv.decrypt([cb])
+        assert len(out) == 1
+        assert int.from_bytes(out[0], "big") == 42
+
+    def test_decrypt_unusable_key_returns_ciphertext(self):
+        priv = PrivateKey(p=5, q=7, e=4, n=35)
+        assert priv.decrypt([b"\x01\x02"]) == [b"\x01\x02"]
+
+    def test_reject_unusable_priv_key_drops_shell_objects(self):
+        from RsaCtfTool.lib.rsa_attack import RSAAttack
+
+        ra = object.__new__(RSAAttack)
+        ra.priv_key = PrivateKey(p=5, q=7, e=4, n=35)
+        ra._reject_unusable_priv_key()
+        assert ra.priv_key is None
+
+    def test_reject_unusable_priv_key_keeps_d_only_keys(self):
+        # Keys with a bare d but no p/q (nonRSA output) stay usable.
+        from RsaCtfTool.lib.rsa_attack import RSAAttack
+
+        ra = object.__new__(RSAAttack)
+        ra.priv_key = PrivateKey(n=1009 * 1013, e=65537, d=12345)
+        ra._reject_unusable_priv_key()
+        assert ra.priv_key is not None
+
+    def test_cube_root_rejects_non_perfect_root(self):
+        from types import SimpleNamespace
+
+        from RsaCtfTool.attacks.single_key.cube_root import Attack
+
+        priv, plain = Attack().attack(SimpleNamespace(e=3), [b"\x30\x39"])
+        assert priv is None
+        assert plain is None
+
+    def test_cube_root_accepts_perfect_cube(self):
+        from types import SimpleNamespace
+
+        from RsaCtfTool.attacks.single_key.cube_root import Attack
+
+        m = 42
+        cb = (m**3).to_bytes(((m**3).bit_length() + 7) // 8, "big")
+        priv, plain = Attack().attack(SimpleNamespace(e=3), [cb])
+        assert plain == [b"*"]
+
+    def test_common_modulus_filters_none_results(self):
+        from types import SimpleNamespace
+
+        from RsaCtfTool.attacks.multi_keys.common_modulus_related_message import (
+            Attack,
+        )
+
+        k1 = SimpleNamespace(n=15, e=7)
+        k2 = SimpleNamespace(n=35, e=5)  # different modulus -> every pair None
+        priv, plains = Attack().attack([k1, k2], [b"\x01", b"\x02"])
+        assert priv is None
+        assert plains is None
+
+    def test_factordb_rejects_multiprime_factor_list(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from RsaCtfTool.attacks.single_key import factordb as factordb_attack
+
+        monkeypatch.setattr(factordb_attack, "getfdb", lambda n: [3, 5, 7])
+        priv, plain = factordb_attack.Attack().attack(SimpleNamespace(n=105, e=7))
+        assert priv is None
+        assert plain is None

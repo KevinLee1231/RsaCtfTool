@@ -238,8 +238,7 @@ def run_attacks(args, logger):
     # Run tests
     if args.publickey is None and args.tests:
         if args.attack is not None:
-            if "," not in args.attack:
-                selected_attacks = args.attack
+            selected_attacks = args.attack
         if "all" in selected_attacks:
             selected_attacks = args.attacks_list
         logger.info("Testing attacks: %d" % (len(selected_attacks)-1)) # Exclude "all"
@@ -259,6 +258,10 @@ def run_attacks(args, logger):
         for publickey in args.publickey:
             attackobj.implemented_attacks = []
             attackobj.decrypted = []
+            # Without this reset a private key recovered for an earlier
+            # key would be printed again as this key's result whenever
+            # every attack for this key is skipped (can_run preflight).
+            attackobj.priv_key = None
             logger.info("\n[*] Testing key %s." % publickey)
             attackobj.attack_single_key(publickey, selected_attacks)
     if args.publickey is None:

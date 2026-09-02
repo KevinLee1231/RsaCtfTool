@@ -38,10 +38,10 @@ class Attack(AbstractAttack):
                 self.common_modulus_related_message_attack(c1, c2, k1, k2)
                 for c1, c2 in itertools.combinations(cipher, 2)
             )
-        if all(_ is None for _ in plains):
-            plains = None
-
-        return (None, plains)
+        # Key pairs with different moduli contribute None; keep only real
+        # plaintexts so the result printer never sees a None entry.
+        plains = [p for p in plains if p is not None]
+        return (None, plains if plains else None)
 
     def test(self):
         from RsaCtfTool.lib.keys_wrapper import PublicKey

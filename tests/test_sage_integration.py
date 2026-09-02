@@ -75,3 +75,27 @@ def test_binary_polynomial_factoring_runs_with_sage():
 
     assert plaintext is None
     assert private_key.p * private_key.q == key.n
+
+
+class _FakeProc:
+    def __init__(self, stdout):
+        self._out = stdout
+
+    def wait(self, timeout=None):
+        return 0
+
+    def communicate(self):
+        return self._out, b""
+
+
+def test_ecm2_parses_factor_tuple(monkeypatch):
+    from RsaCtfTool.attacks.single_key import ecm2
+
+    key = SimpleNamespace(n=15, e=7)
+    monkeypatch.setattr(
+        ecm2.subprocess, "Popen", lambda *a, **k: _FakeProc(b"(3, 5)\n")
+    )
+    # phi(15) = 8, d = 7^-1 mod 8 = 7, m=2 -> c = 2^7 mod 15 = 8
+    private_key, plaintext = ecm2.Attack().attack(key, [b"\x08"])
+    assert private_key is None
+    assert plaintext == [b"\x02"]

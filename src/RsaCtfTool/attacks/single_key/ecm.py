@@ -39,7 +39,13 @@ class Attack(AbstractAttack):
                 ]
 
             sage_proc = subprocess.Popen(
-                sage_find_factor_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                sage_find_factor_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                # Own session: os.getpgid(child) then names the child
+                # itself, so the timeout cleanup below cannot escalate to
+                # killing this tool's own process group.
+                start_new_session=True,
             )
             try:
                 sage_proc.wait(timeout=self.timeout)
