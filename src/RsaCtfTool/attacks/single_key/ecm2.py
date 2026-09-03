@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import subprocess
 import os
+import re
+import subprocess
+from collections import Counter
+
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack, SAGE_MIN_TIMEOUT
 from RsaCtfTool.lib.utils import rootpath, TimeoutError, terminate_proc_tree
 from RsaCtfTool.lib.number_theory import invert, powmod
@@ -21,7 +24,6 @@ class Attack(AbstractAttack):
         """
 
         try:
-            sageresult = []
             try:
                 sage_proc = subprocess.Popen(
                     ["sage", f"{rootpath}/sage/ecm2.sage", str(publickey.n)],
@@ -34,10 +36,6 @@ class Attack(AbstractAttack):
                 )
                 sage_proc.wait(timeout=self.timeout)
                 stdout, stderr = sage_proc.communicate()
-                sageresult = stdout.strip()
-                if sageresult.startswith(b"(") and sageresult.endswith(b")"):
-                    sageresult = sageresult[1:-1]
-                sageresult = sageresult.split(b",") if sageresult else []
             except (
                 subprocess.CalledProcessError,
                 subprocess.TimeoutExpired,
@@ -46,27 +44,36 @@ class Attack(AbstractAttack):
                 terminate_proc_tree(os.getpgid(sage_proc.pid))
                 return (None, None)
 
-            if len(sageresult) > 0:
-                plain = []
-                sageresults = [int(_.decode("utf-8")) for _ in sageresult]
-                phi = 1
-                for fac in sageresults:
-                    phi = phi * (int(fac) - 1)
+            # ecm.factor() prints a python list ("[7, 11]") on modern sage
+            # and a Factorization string ("7 * 11") on older ones; either
+            # way the integer tokens are the prime factors. The helper
+            # script prints "0" when the factorization failed.
+            sageresults = [int(x) for x in re.findall(rb"\d+", stdout)]
 
-                if cipher is not None and len(cipher) > 0:
-                    for c in cipher:
-                        try:
-                            cipher_int = int.from_bytes(c, "big")
-                            d = invert(publickey.e, phi)
-                            m = hex(powmod(cipher_int, d, publickey.n))[2::]
-                            if len(m) % 2 != 0:
-                                m = f"0{m}"
-                            plain.append(bytes.fromhex(m))
-                        except ZeroDivisionError:
-                            continue
+            n_check = 1
+            phi = 1
+            for fac, exp in Counter(sageresults).items():
+                n_check *= fac**exp
+                # Euler's totient over p^exp is (p - 1) * p^(exp - 1); a
+                # flat product of (fac - 1) miscounts repeated factors.
+                phi *= (fac - 1) * fac ** (exp - 1)
+            if not sageresults or n_check != publickey.n or phi <= 0:
+                return (None, None)
 
-                return (None, plain)
-            return (None, None)
+            plain = []
+            if cipher is not None and len(cipher) > 0:
+                for c in cipher:
+                    try:
+                        cipher_int = int.from_bytes(c, "big")
+                        d = invert(publickey.e, phi)
+                        m = hex(powmod(cipher_int, d, publickey.n))[2::]
+                        if len(m) % 2 != 0:
+                            m = f"0{m}"
+                        plain.append(bytes.fromhex(m))
+                    except ZeroDivisionError:
+                        continue
+
+            return (None, plain)
         except KeyboardInterrupt:
             pass
         return (None, None)

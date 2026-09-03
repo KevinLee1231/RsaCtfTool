@@ -3,7 +3,6 @@
 
 import logging
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack
-from RsaCtfTool.lib.keys_wrapper import PrivateKey
 from RsaCtfTool.lib.algos import euler
 from RsaCtfTool.lib.number_theory import is_congruent
 
@@ -32,19 +31,15 @@ class Attack(AbstractAttack):
                 return None, None
         except Exception:
             return None, None
-        if euler_res and len(euler_res) > 1:
-            publickey.p, publickey.q = euler_res
+        if euler_res is not None and len(euler_res) == 2:
+            p, q = int(euler_res[0]), int(euler_res[1])
+            # euler() derives its factors from GCDs that may also come out
+            # as 1, n, or values whose product overshoots n (e.g. (45, 45)
+            # for n = 225); only a genuine split of n may proceed.
+            if 1 < p < publickey.n and 1 < q < publickey.n and p * q == publickey.n:
+                publickey.p, publickey.q = p, q
 
-        if publickey.q is not None:
-            priv_key = PrivateKey(
-                int(publickey.p),
-                int(publickey.q),
-                int(publickey.e),
-                int(publickey.n),
-            )
-            return priv_key, None
-
-        return None, None
+        return self.create_private_key(publickey)
 
     def test(self):
         from RsaCtfTool.lib.keys_wrapper import PublicKey

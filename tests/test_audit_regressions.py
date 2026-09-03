@@ -376,7 +376,7 @@ class TestFifthAuditRegressions:
         m = 42
         cb = (m**3).to_bytes(((m**3).bit_length() + 7) // 8, "big")
         priv, plain = Attack().attack(SimpleNamespace(e=3), [cb])
-        assert plain == [b"*"]
+        assert plain == [bytes([42])]
 
     def test_common_modulus_filters_none_results(self):
         from types import SimpleNamespace
@@ -524,3 +524,127 @@ class TestFifthAuditFollowups:
         pub.n = 1  # hand-crafted degenerate modulus
         assert attackobj.attack_single_key(pub) is True
         assert attackobj.priv_key is None
+class _FakeSageProc:
+    """Minimal subprocess.Popen stand-in for sage-backed attacks."""
+
+    def __init__(self, stdout):
+        self._stdout = stdout
+        self.pid = 0  # terminate_proc_tree is never reached on this path
+
+    def wait(self, timeout=None):
+        return 0
+
+    def communicate(self):
+        return self._stdout, b""
+
+
+class TestSixthAuditGroupB:
+    """sage-output parsing and degenerate-factor handling in ecm/ecm2/euler."""
+
+    @staticmethod
+    def _pub(n, e):
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+
+        return PublicKey(RSA.construct((n, e)).publickey().exportKey())
+
+    def test_euler_degenerate_gcd_pair_misses_cleanly(self):
+        # euler(225) returns (45, 45) whose product overshoots n; this used
+        # to build a key object with key=None but a valid-looking d.
+        from RsaCtfTool.attacks.single_key.euler import Attack
+
+        pub = self._pub(225, 7)
+        assert Attack(timeout=10).attack(pub, progress=False) == (None, None)
+        assert pub.p is None and pub.q is None
+
+    def test_euler_1mod4_semiprime_still_recovers(self):
+        from RsaCtfTool.attacks.single_key.euler import Attack
+
+        pub = self._pub(65, 7)
+        priv, _ = Attack(timeout=10).attack(pub, progress=False)
+        assert priv is not None and priv.key is not None
+        assert sorted([priv.p, priv.q]) == [5, 13]
+
+    def test_ecm2_modern_sage_list_output_parses(self, monkeypatch):
+        # ecm.factor() prints "[7, 11]" on modern sage; the old parser only
+        # stripped parentheses and died on the square brackets.
+        import subprocess
+
+        from RsaCtfTool.attacks.single_key.ecm2 import Attack
+
+        monkeypatch.setattr(
+            subprocess, "Popen", lambda *a, **k: _FakeSageProc(b"[7, 11]")
+        )
+        pub = self._pub(77, 13)
+        cipher = pow(42, 13, 77).to_bytes(1, "big")
+        _, plain = Attack(timeout=10).attack(pub, [cipher], progress=False)
+        assert plain == [bytes([42])]
+
+    def test_ecm2_repeated_factors_compute_correct_phi(self, monkeypatch):
+        # n = 7**2: a flat product of (fac - 1) gives phi = 36 instead of
+        # the correct 42, silently decrypting to garbage.
+        import subprocess
+
+        from RsaCtfTool.attacks.single_key.ecm2 import Attack
+
+        monkeypatch.setattr(
+            subprocess, "Popen", lambda *a, **k: _FakeSageProc(b"[7, 7]")
+        )
+        pub = self._pub(49, 5)
+        cipher = pow(3, 5, 49).to_bytes(1, "big")
+        _, plain = Attack(timeout=10).attack(pub, [cipher], progress=False)
+        assert plain == [bytes([3])]
+
+    def test_ecm2_sage_failure_output_misses_cleanly(self, monkeypatch):
+        import subprocess
+
+        from RsaCtfTool.attacks.single_key.ecm2 import Attack
+
+        monkeypatch.setattr(
+            subprocess, "Popen", lambda *a, **k: _FakeSageProc(b"0")
+        )
+        pub = self._pub(77, 13)
+        assert Attack(timeout=10).attack(pub, [bytes([14])], progress=False) == (
+            None,
+            None,
+        )
+
+    def test_ecm_empty_sage_stdout_misses_cleanly(self, monkeypatch):
+        # A sage binary that dies before printing anything used to raise
+        # ValueError out of int(stdout).
+        import subprocess
+
+        from RsaCtfTool.attacks.single_key.ecm import Attack
+
+        monkeypatch.setattr(
+            subprocess, "Popen", lambda *a, **k: _FakeSageProc(b"")
+        )
+        pub = self._pub(77, 13)
+        assert Attack(timeout=10).attack(pub, progress=False) == (None, None)
+
+    def test_ecm_prime_echo_rejected(self, monkeypatch):
+        # ecm.find_factor may echo n itself for prime input; that used to
+        # build a bogus (p, q) = (n, 1) key.
+        import subprocess
+
+        from RsaCtfTool.attacks.single_key.ecm import Attack
+
+        monkeypatch.setattr(
+            subprocess, "Popen", lambda *a, **k: _FakeSageProc(b"77")
+        )
+        pub = self._pub(77, 13)
+        assert Attack(timeout=10).attack(pub, progress=False) == (None, None)
+        assert pub.p is None and pub.q is None
+
+    def test_ecm_real_factor_still_recovers(self, monkeypatch):
+        import subprocess
+
+        from RsaCtfTool.attacks.single_key.ecm import Attack
+
+        monkeypatch.setattr(
+            subprocess, "Popen", lambda *a, **k: _FakeSageProc(bytes([55, 10]))
+        )
+        pub = self._pub(77, 13)
+        priv, _ = Attack(timeout=10).attack(pub, progress=False)
+        assert priv is not None and priv.key is not None
+        assert sorted([priv.p, priv.q]) == [7, 11]
