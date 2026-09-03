@@ -796,3 +796,42 @@ class TestRocaSiqsHardening:
             None,
             None,
         )
+class TestSmallfractionParsing:
+    @staticmethod
+    def _pub(n, e):
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+
+        return PublicKey(RSA.construct((n, e)).publickey().exportKey())
+
+    def test_empty_sage_stdout_misses_cleanly(self, monkeypatch):
+        # int(b"") used to raise ValueError out of attack().
+        import subprocess
+
+        from RsaCtfTool.attacks.single_key.smallfraction import Attack
+
+        monkeypatch.setattr(subprocess, "check_output", lambda *a, **k: b"")
+        pub = self._pub(77, 13)
+        assert Attack(timeout=10).attack(pub, progress=False) == (None, None)
+
+    def test_prime_echo_rejected(self, monkeypatch):
+        # A sage result equal to n itself used to build a bogus (n, 1) key.
+        import subprocess
+
+        from RsaCtfTool.attacks.single_key.smallfraction import Attack
+
+        monkeypatch.setattr(subprocess, "check_output", lambda *a, **k: b"77")
+        pub = self._pub(77, 13)
+        assert Attack(timeout=10).attack(pub, progress=False) == (None, None)
+        assert pub.p is None and pub.q is None
+
+    def test_real_factor_still_recovers(self, monkeypatch):
+        import subprocess
+
+        from RsaCtfTool.attacks.single_key.smallfraction import Attack
+
+        monkeypatch.setattr(subprocess, "check_output", lambda *a, **k: b"7")
+        pub = self._pub(77, 13)
+        priv, _ = Attack(timeout=10).attack(pub, progress=False)
+        assert priv is not None and priv.key is not None
+        assert sorted([priv.p, priv.q]) == [7, 11]

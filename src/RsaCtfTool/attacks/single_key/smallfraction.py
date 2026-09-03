@@ -23,8 +23,14 @@ class Attack(AbstractAttack):
                 timeout=self.timeout,
                 stderr=subprocess.DEVNULL,
             )
-            sageresult = int(r)
-            if sageresult > 0:
+            try:
+                sageresult = int(r)
+            except ValueError:
+                # sage died before printing a factor (empty/garbled stdout).
+                return (None, None)
+            # Accept only a genuine factor split: the script prints 0 on
+            # failure and a value that does not divide n is useless.
+            if 1 < sageresult < publickey.n and publickey.n % sageresult == 0:
                 publickey.p = sageresult
                 publickey.q = publickey.n // publickey.p
                 return self.create_private_key_from_pqe(
