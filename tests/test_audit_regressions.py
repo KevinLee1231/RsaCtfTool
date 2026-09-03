@@ -835,3 +835,36 @@ class TestSmallfractionParsing:
         priv, _ = Attack(timeout=10).attack(pub, progress=False)
         assert priv is not None and priv.key is not None
         assert sorted([priv.p, priv.q]) == [7, 11]
+class TestCommonModulusRelatedMessage:
+    def test_wrapped_m_to_the_g_returns_none(self):
+        # gcd(e1, e2) = 3 and m**3 >= n: the truncated cube root used to be
+        # returned as if it were the plaintext.
+        from RsaCtfTool.lib.number_theory import common_modulus_related_message
+
+        n = 1009 * 1013
+        m = 1000
+        assert (
+            common_modulus_related_message(3, 6, n, pow(m, 3, n), pow(m, 6, n))
+            is None
+        )
+
+    def test_small_message_still_recovers(self):
+        # m**3 < n: the exact cube root is the plaintext.
+        from RsaCtfTool.lib.number_theory import common_modulus_related_message
+
+        n = 1009 * 1013
+        m = 100  # m**3 = 1e6 < n
+        assert (
+            common_modulus_related_message(3, 6, n, pow(m, 3, n), pow(m, 6, n))
+            == m
+        )
+
+    def test_coprime_exponents_unaffected(self):
+        from RsaCtfTool.lib.number_theory import common_modulus_related_message
+
+        n = 1009 * 1013
+        m = 42
+        assert (
+            common_modulus_related_message(5, 7, n, pow(m, 5, n), pow(m, 7, n))
+            == m
+        )

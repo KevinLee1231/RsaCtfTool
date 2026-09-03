@@ -510,7 +510,13 @@ def common_modulus_related_message(e1, e2, n, c1, c2):
     c1 = neg_pow(c1, a, n) if a < 0 else powmod(c1, a, n)
     c2 = neg_pow(c2, b, n) if b < 0 else powmod(c2, b, n)
     ct = c1 * c2 % n
-    return ct if g == 1 else int(introot(ct, g))
+    if g == 1:
+        return ct
+    # The Bezout combination yields m^g mod n; only when m^g < n does the
+    # integer g-th root recover m. A truncated root of a wrapped value is
+    # garbage - reject it with an exact round-trip check.
+    root = int(introot(ct, g))
+    return root if pow(root, g) == ct else None
 
 
 def phi(n, factors):
