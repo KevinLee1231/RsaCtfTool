@@ -868,3 +868,109 @@ class TestCommonModulusRelatedMessage:
             common_modulus_related_message(5, 7, n, pow(m, 5, n), pow(m, 7, n))
             == m
         )
+class TestIdrsaPubDisector:
+    @staticmethod
+    def _line(*fields):
+        import base64
+        import struct
+
+        blob = b"".join(struct.pack(">I", len(f)) + f for f in fields)
+        return "ssh-rsa " + base64.standard_b64encode(blob).decode()
+
+    def test_truncated_blob_misses_cleanly(self):
+        # Fewer than the ssh-rsa algo/e/n triple used to raise IndexError.
+        from RsaCtfTool.lib.idrsa_pub_disector import disect_idrsa_pub
+
+        assert disect_idrsa_pub(self._line(b"ssh-rsa", b"")) == (None, None)
+
+    def test_invalid_base64_misses_cleanly(self):
+        from RsaCtfTool.lib.idrsa_pub_disector import disect_idrsa_pub
+
+        assert disect_idrsa_pub("ssh-rsa !!!not-base64!!!") == (None, None)
+
+    def test_valid_key_still_parses(self):
+        from RsaCtfTool.lib.idrsa_pub_disector import disect_idrsa_pub
+
+        line = self._line(b"ssh-rsa", bytes([1, 0, 1]), bytes([0, 199]))
+        assert disect_idrsa_pub(line) == (199, 65537)
+
+
+class TestCryptoWrapperAll:
+    def test_dunder_all_is_strings(self):
+        # Object-valued __all__ breaks "from crypto_wrapper import *".
+        import RsaCtfTool.lib.crypto_wrapper as cw
+
+        assert all(isinstance(name, str) for name in cw.__all__)
+        assert set(cw.__all__) == {
+            "RSA",
+            "PKCS1_OAEP",
+            "number",
+            "long_to_bytes",
+            "bytes_to_long",
+        }
+class TestBase64DecryptInput:
+    def test_str_base64_actually_decodes(self):
+        # b64encode returns bytes, so the round-trip check against a str
+        # input never matched and base64 strings passed through undecoded.
+        from RsaCtfTool.lib.utils import get_base64_value
+
+        assert get_base64_value("aGVsbG8=") == b"hello"
+
+    def test_bytes_input_unchanged(self):
+        from RsaCtfTool.lib.utils import get_base64_value
+
+        assert get_base64_value(b"aGVsbG8=") == b"hello"
+
+    def test_non_base64_passes_through(self):
+        from RsaCtfTool.lib.utils import get_base64_value
+
+        assert get_base64_value("zzz!!!") == b"zzz!!!"
+
+    def test_handle_decrypt_input_base64_path(self):
+        # --decrypt aGVsbG8= used to crash in n2s with a TypeError because
+        # the undecoded string (or decoded bytes) is not an int.
+        from types import SimpleNamespace
+
+        from RsaCtfTool.main import _handle_decrypt_input
+
+        args = SimpleNamespace(decrypt="aGVsbG8=", decryptfile=None)
+        out = _handle_decrypt_input(args, None)
+        assert out.decrypt == [b"hello"]
+
+    def test_handle_decrypt_input_numeric_path(self):
+        from types import SimpleNamespace
+
+        from RsaCtfTool.main import _handle_decrypt_input
+
+        args = SimpleNamespace(decrypt="0x2a", decryptfile=None)
+        out = _handle_decrypt_input(args, None)
+        assert out.decrypt == [bytes([42])]
+
+
+class TestDumpkeyExtGuard:
+    def test_ext_with_d_only_key_does_not_crash(self):
+        # p/q are None on d-only keys (e.g. nonRSA output); the dp/dq math
+        # used to raise TypeError.
+        import logging
+        from types import SimpleNamespace
+
+        from RsaCtfTool.lib.keys_wrapper import PrivateKey
+        from RsaCtfTool.lib.utils import _print_dumpkey_private
+
+        pk = PrivateKey(n=49, e=5, d=17)
+        _print_dumpkey_private(
+            SimpleNamespace(ext=True), [pk], logging.getLogger("global_logger")
+        )
+
+    def test_ext_with_square_modulus_does_not_crash(self):
+        # p == q has no CRT inverse; invmod used to raise ZeroDivisionError.
+        import logging
+        from types import SimpleNamespace
+
+        from RsaCtfTool.lib.keys_wrapper import PrivateKey
+        from RsaCtfTool.lib.utils import _print_dumpkey_private
+
+        pk = PrivateKey(p=7, q=7, e=5, n=49)
+        _print_dumpkey_private(
+            SimpleNamespace(ext=True), [pk], logging.getLogger("global_logger")
+        )

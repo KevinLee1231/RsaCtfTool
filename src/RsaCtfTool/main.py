@@ -514,10 +514,12 @@ def _handle_decrypt_input(args, logger):
         decrypt_array = []
         for decrypt in args.decrypt.split(","):
             try:
-                decrypt = get_numeric_value(decrypt)
+                decrypt = n2s(get_numeric_value(decrypt))
             except Exception:
+                # Not a number: n2s only accepts ints, so base64-decoded
+                # bytes must skip it and go straight into the array.
                 decrypt = get_base64_value(decrypt)
-            decrypt_array.append(n2s(decrypt))
+            decrypt_array.append(decrypt)
         args.decrypt = decrypt_array
     if args.decryptfile is not None:
         if not decrypt_file(args, logger):

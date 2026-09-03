@@ -26,8 +26,15 @@ def get_numeric_value(value):
 
 
 def get_base64_value(value):
-    """Parse input (hex or numerical)"""
+    """Decode base64 input; pass anything else through unchanged.
+
+    The round-trip check compares b64encode's bytes output against the
+    input, so string input must be encoded first - comparing bytes to str
+    never matches and base64 strings used to pass through undecoded.
+    """
     try:
+        if isinstance(value, str):
+            value = value.encode()
         if base64.b64encode(d := base64.b64decode(value)) == value:
             return d
         else:
@@ -90,14 +97,23 @@ def _print_dumpkey_private(args, private_keys, logger):
         if priv_key.q is not None:
             logger.info(f"q: {str(priv_key.q)}")
         if args.ext:
-            dp = priv_key.d % (priv_key.p - 1)
-            dq = priv_key.d % (priv_key.q - 1)
-            pinv = invmod(priv_key.p, priv_key.q)
-            qinv = invmod(priv_key.q, priv_key.p)
-            logger.info(f"dp: {str(dp)}")
-            logger.info(f"dq: {str(dq)}")
-            logger.info(f"pinv: {str(pinv)}")
-            logger.info(f"qinv: {str(qinv)}")
+            if (
+                priv_key.d is not None
+                and priv_key.p is not None
+                and priv_key.q is not None
+            ):
+                dp = priv_key.d % (priv_key.p - 1)
+                dq = priv_key.d % (priv_key.q - 1)
+                logger.info(f"dp: {str(dp)}")
+                logger.info(f"dq: {str(dq)}")
+                try:
+                    pinv = invmod(priv_key.p, priv_key.q)
+                    qinv = invmod(priv_key.q, priv_key.p)
+                    logger.info(f"pinv: {str(pinv)}")
+                    logger.info(f"qinv: {str(qinv)}")
+                except (ZeroDivisionError, ValueError):
+                    # p == q (square modulus) has no CRT inverse.
+                    logger.info("pinv/qinv: undefined for p == q")
 
 
 def _print_dumpkey_public(args, publickey, logger):

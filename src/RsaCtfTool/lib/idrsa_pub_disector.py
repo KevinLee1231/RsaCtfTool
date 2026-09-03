@@ -7,11 +7,15 @@ def disect_idrsa_pub(pub):
     a = pub.split(" ")
     bindata = None
 
-    if a[0].find("|1|") > -1 and a[1] == "ssh-rsa":
-        bindata = base64.standard_b64decode(a[2])
+    try:
+        if a[0].find("|1|") > -1 and a[1] == "ssh-rsa":
+            bindata = base64.standard_b64decode(a[2])
 
-    if a[0] == "ssh-rsa":
-        bindata = base64.standard_b64decode(a[1])
+        if a[0] == "ssh-rsa":
+            bindata = base64.standard_b64decode(a[1])
+    except (IndexError, binascii.Error, ValueError):
+        # Truncated line or invalid base64: not a usable ssh-rsa key.
+        return None, None
 
     def getdata(start, end):
         field = bindata[start:end]
@@ -37,6 +41,9 @@ def disect_idrsa_pub(pub):
             start += pos + 4
             end = start + 4
 
+        if len(c) < 3:
+            # Fewer fields than ssh-rsa's algo/e/n triple: malformed blob.
+            return None, None
         E = int(binascii.hexlify(c[1]), 16)
         N = int(binascii.hexlify(c[2]), 16)
 

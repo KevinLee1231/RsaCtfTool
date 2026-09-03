@@ -24,16 +24,19 @@ class TestGetNumericValue:
 
 class TestGetBase64Value:
     def test_valid_base64(self):
+        # The decoded bytes feed decrypt() via bytes_to_long, so a valid
+        # base64 string must decode to bytes, not pass through as str.
         import base64
 
         test_data = b"hello"
         b64 = base64.b64encode(test_data).decode()
         result = get_base64_value(b64)
-        assert isinstance(result, str)
+        assert result == test_data
 
     def test_non_base64(self):
+        # Undecodable input passes through unchanged (as bytes).
         result = get_base64_value("not_valid_base64!!!")
-        assert result == "not_valid_base64!!!"
+        assert result == b"not_valid_base64!!!"
 
 
 class TestS2N:
