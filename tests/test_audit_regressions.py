@@ -723,3 +723,76 @@ class TestPartialQMissingComponents:
 
         pk = PrivateKey(n=77, e=13, d=37)
         assert Attack(timeout=10).attack(pk, progress=False) == (None, None)
+class TestRocaSiqsHardening:
+    @staticmethod
+    def _pub(n, e):
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+
+        return PublicKey(RSA.construct((n, e)).publickey().exportKey())
+
+    def test_roca_colon_noise_misses_cleanly(self, monkeypatch):
+        # Colon-bearing non-numeric stdout used to escape as ValueError.
+        import subprocess
+
+        monkeypatch.setattr(
+            "RsaCtfTool.attacks.single_key.roca.is_roca_vulnerable",
+            lambda n: True,
+        )
+        monkeypatch.setattr(
+            subprocess, "check_output", lambda *a, **k: b"WARN: ing"
+        )
+        from RsaCtfTool.attacks.single_key.roca import Attack
+
+        assert Attack(timeout=10).attack(self._pub(77, 13), progress=False) == (
+            None,
+            None,
+        )
+
+    def test_roca_mismatched_factors_rejected(self, monkeypatch):
+        import subprocess
+
+        monkeypatch.setattr(
+            "RsaCtfTool.attacks.single_key.roca.is_roca_vulnerable",
+            lambda n: True,
+        )
+        monkeypatch.setattr(
+            subprocess, "check_output", lambda *a, **k: b"7:13"
+        )
+        from RsaCtfTool.attacks.single_key.roca import Attack
+
+        assert Attack(timeout=10).attack(self._pub(77, 13), progress=False) == (
+            None,
+            None,
+        )
+
+    def test_roca_valid_factors_still_recover(self, monkeypatch):
+        import subprocess
+
+        monkeypatch.setattr(
+            "RsaCtfTool.attacks.single_key.roca.is_roca_vulnerable",
+            lambda n: True,
+        )
+        monkeypatch.setattr(
+            subprocess, "check_output", lambda *a, **k: b"7:11"
+        )
+        from RsaCtfTool.attacks.single_key.roca import Attack
+
+        priv, _ = Attack(timeout=10).attack(self._pub(77, 13), progress=False)
+        assert priv is not None and priv.key is not None
+        assert sorted([priv.p, priv.q]) == [7, 11]
+
+    def test_siqs_yafu_crash_misses_cleanly(self, monkeypatch):
+        # A crashing/timing-out yafu used to raise out of attack().
+        import subprocess
+
+        def boom(*a, **k):
+            raise subprocess.CalledProcessError(1, "yafu")
+
+        monkeypatch.setattr(subprocess, "check_output", boom)
+        from RsaCtfTool.attacks.single_key.siqs import Attack
+
+        assert Attack(timeout=10).attack(self._pub(77, 13), progress=False) == (
+            None,
+            None,
+        )

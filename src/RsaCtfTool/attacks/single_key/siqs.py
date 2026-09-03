@@ -81,7 +81,16 @@ class Attack(AbstractAttack):
             return None, None
 
         siqsobj = SiqsAttack(publickey.n, self.timeout)
-        siqsobj.doattack()
+        try:
+            siqsobj.doattack()
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            OSError,
+        ):
+            # yafu crashed, hit the timeout, or vanished from PATH after the
+            # can_run preflight - all of these are a plain miss.
+            return None, None
 
         if siqsobj.p and siqsobj.q:
             publickey.q = siqsobj.q

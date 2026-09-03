@@ -31,10 +31,18 @@ class Attack(AbstractAttack):
 
             if b"FAIL" not in sageresult and b":" in sageresult:
                 sageresult = sageresult.decode("utf-8").strip()
-                p, q = map(int, sageresult.split(":"))
+                try:
+                    p, q = map(int, sageresult.split(":"))
+                except ValueError:
+                    # Stray colon-bearing noise on stdout is not a factor pair.
+                    return (None, None)
+                if p * q != publickey.n:
+                    return (None, None)
                 priv_key = PrivateKey(
                     int(p), int(q), int(publickey.e), int(publickey.n)
                 )
+                if priv_key.key is None:
+                    return (None, None)
                 return (priv_key, None)
             else:
                 return (None, None)
