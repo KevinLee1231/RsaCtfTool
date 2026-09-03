@@ -648,3 +648,40 @@ class TestSixthAuditGroupB:
         priv, _ = Attack(timeout=10).attack(pub, progress=False)
         assert priv is not None and priv.key is not None
         assert sorted([priv.p, priv.q]) == [7, 11]
+class TestNonRSAInvertGuard:
+    """nonRSA must miss cleanly when e shares a factor with phi."""
+
+    @staticmethod
+    def _pub(n, e):
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+
+        return PublicKey(RSA.construct((n, e)).publickey().exportKey())
+
+    def test_prime_n_noninvertible_e_misses_cleanly(self):
+        # gcd(3, phi(7)=6) = 3: invmod raised ZeroDivisionError instead of
+        # returning (None, None).
+        from RsaCtfTool.attacks.single_key.nonRSA import Attack
+
+        assert Attack(timeout=10).attack(self._pub(7, 3), progress=False) == (
+            None,
+            None,
+        )
+
+    def test_prime_power_n_noninvertible_e_misses_cleanly(self):
+        # n = 7**2, phi = 42, gcd(3, 42) = 3. (n = 27, e = 3 would need a
+        # public key whose exponent shares a factor with n, which
+        # RSA.construct refuses to serialize.)
+        from RsaCtfTool.attacks.single_key.nonRSA import Attack
+
+        assert Attack(timeout=10).attack(self._pub(49, 3), progress=False) == (
+            None,
+            None,
+        )
+
+    def test_prime_power_n_invertible_e_still_recovers(self):
+        # phi(49) = 42, d = 5^-1 mod 42 = 17.
+        from RsaCtfTool.attacks.single_key.nonRSA import Attack
+
+        priv, _ = Attack(timeout=10).attack(self._pub(49, 5), progress=False)
+        assert priv is not None and priv.d == 17
