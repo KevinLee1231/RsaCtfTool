@@ -1002,7 +1002,12 @@ def pollard_strassen(n):
     """
     https://math.stackexchange.com/questions/185524/pollard-strassen-algorithm
     """
-    f, c = [], iroot(n, 4)[0]
+    # The scan covers j in [1, c*c] and must reach sqrt(n) to find the
+    # smallest factor of any composite, so c has to be rounded UP:
+    # floor(n**0.25)**2 < sqrt(n) misses factors (77, 15, 35 all failed).
+    r, exact = iroot(n, 4)
+    c = int(r) if exact else int(r) + 1
+    f = []
     for i in range(0, c):
         f.append(1)
         jmin = i * c + 1

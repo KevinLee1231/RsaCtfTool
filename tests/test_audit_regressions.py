@@ -685,3 +685,41 @@ class TestNonRSAInvertGuard:
 
         priv, _ = Attack(timeout=10).attack(self._pub(49, 5), progress=False)
         assert priv is not None and priv.d == 17
+class TestPollardStrassenCoverage:
+    """pollard_strassen must reach sqrt(n) and its attack layer must not
+    crash when the algorithm finds nothing."""
+
+    def test_scan_reaches_sqrt_n(self):
+        # With floor(n**0.25) blocks the scan stopped at c*c < sqrt(n) and
+        # missed the smallest factor of most small semiprimes.
+        from RsaCtfTool.lib.algos import pollard_strassen
+
+        for n, want in [
+            (77, (7, 11)),
+            (15, (3, 5)),
+            (35, (5, 7)),
+            (143, (11, 13)),
+            (221, (13, 17)),
+        ]:
+            r = pollard_strassen(n)
+            assert r is not None and sorted(map(int, r)) == sorted(want), n
+
+    def test_attack_layer_recovers_semiprime(self):
+        # The None return used to escape as a TypeError from tuple unpack.
+        from RsaCtfTool.attacks.single_key.pollard_strassen import Attack
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+
+        pub = PublicKey(RSA.construct((77, 13)).publickey().exportKey())
+        priv, _ = Attack(timeout=10).attack(pub, progress=False)
+        assert priv is not None and priv.key is not None
+        assert sorted([priv.p, priv.q]) == [7, 11]
+class TestPartialQMissingComponents:
+    def test_component_built_private_key_misses_cleanly(self):
+        # Component-built PrivateKey objects have no dp/dq/di attributes;
+        # the attack used to die on AttributeError instead of missing.
+        from RsaCtfTool.attacks.single_key.partial_q import Attack
+        from RsaCtfTool.lib.keys_wrapper import PrivateKey
+
+        pk = PrivateKey(n=77, e=13, d=37)
+        assert Attack(timeout=10).attack(pk, progress=False) == (None, None)

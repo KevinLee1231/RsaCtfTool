@@ -23,10 +23,18 @@ class Attack(AbstractAttack):
             n = publickey.n
             if (e := publickey.e) == 0:
                 e = 65537
-            dp = publickey.dp
-            dq = publickey.dq
-            di = publickey.di
+            # dp/dq/di only exist on keys loaded from a partial-privkey
+            # file; component-built PrivateKey objects lack the attributes
+            # entirely, so fetch them defensively.
+            dp = getattr(publickey, "dp", None)
+            dq = getattr(publickey, "dq", None)
+            di = getattr(publickey, "di", None)
             partial_q = publickey.q
+            if None in (dp, dq, di, partial_q):
+                self.logger.error(
+                    "[!] partial_q needs CRT components (dp, dq, qinv) and a partial q..."
+                )
+                return None, None
             publickey.p, publickey.q = solve_partial_q(n, e, dp, dq, di, partial_q)
             if publickey.e == 0:
                 publickey.e = 65537
