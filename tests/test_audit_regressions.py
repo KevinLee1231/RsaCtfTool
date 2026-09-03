@@ -442,3 +442,85 @@ class TestFifthAuditPerformanceFixes:
         key_data = RSA.construct((54311 * 1009, 65537)).publickey().exportKey()
         priv, _ = Attack().attack(PublicKey(key_data), progress=False)
         assert priv is not None
+
+
+class TestFifthAuditFollowups:
+    """Degenerate-result handling pinned right after the fifth audit."""
+
+    def test_comfact_cn_cipher_multiple_of_n_misses_cleanly(self):
+        # gcd(n, c) == n used to build a bogus (1, n) "key" and leave
+        # publickey.p/q polluted for the remaining attacks.
+        from RsaCtfTool.attacks.single_key.comfact_cn import Attack
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+
+        n = 101 * 113
+        pub = PublicKey(RSA.construct((n, 17)).publickey().exportKey())
+        priv, _ = Attack(timeout=10).attack(
+            pub, cipher=[(2 * n).to_bytes(3, "big")], progress=False
+        )
+        assert priv is None
+        assert pub.p is None and pub.q is None
+
+    def test_comfact_cn_real_shared_factor_still_recovers(self):
+        from RsaCtfTool.attacks.single_key.comfact_cn import Attack
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+
+        n = 101 * 113
+        pub = PublicKey(RSA.construct((n, 17)).publickey().exportKey())
+        priv, _ = Attack(timeout=10).attack(
+            pub, cipher=[(101 * 7).to_bytes(3, "big")], progress=False
+        )
+        assert priv is not None and priv.key is not None
+        assert sorted([priv.p, priv.q]) == [101, 113]
+
+    def test_classical_shor_prime_power_modulus_misses_cleanly(self):
+        # n = p**k gives a non-coprime split; the resulting wrong-phi key
+        # used to be returned as a success carrying a wrong d.
+        from RsaCtfTool.attacks.single_key.classical_shor import Attack
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+
+        pub = PublicKey(RSA.construct((27, 5)).publickey().exportKey())
+        assert Attack(timeout=10).attack(pub, progress=False) == (None, None)
+
+    def test_classical_shor_semiprime_still_recovers(self):
+        from RsaCtfTool.attacks.single_key.classical_shor import Attack
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+
+        pub = PublicKey(RSA.construct((77, 13)).publickey().exportKey())
+        priv, _ = Attack(timeout=10).attack(pub, progress=False)
+        assert priv is not None and priv.key is not None
+        assert sorted([priv.p, priv.q]) == [7, 11]
+
+    def test_boneh_durfee_inconsistent_sage_output_misses_cleanly(
+        self, monkeypatch
+    ):
+        # A positive but inconsistent d from the lattice script used to
+        # escape as a ValueError out of RSA.construct.
+        import subprocess
+
+        from RsaCtfTool.attacks.single_key.boneh_durfee import Attack
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+
+        monkeypatch.setattr(subprocess, "check_output", lambda *a, **k: b"12345")
+        pub = PublicKey(RSA.construct((101 * 113, 17)).publickey().exportKey())
+        assert Attack(timeout=10).attack(pub, progress=False) == (None, None)
+
+    def test_tiny_modulus_short_circuits_single_key_mode(self):
+        from types import SimpleNamespace
+
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+        from RsaCtfTool.lib.rsa_attack import RSAAttack
+
+        attackobj = RSAAttack(SimpleNamespace(decrypt=None, attack=[]))
+        pub = PublicKey(
+            RSA.construct((35, 3)).publickey().exportKey(), filename="tiny"
+        )
+        pub.n = 1  # hand-crafted degenerate modulus
+        assert attackobj.attack_single_key(pub) is True
+        assert attackobj.priv_key is None

@@ -40,7 +40,14 @@ class Attack(AbstractAttack):
         ):
             return (None, None)
         if sageresult > 0:
-            tmp_priv = RSA.construct((int(publickey.n), int(publickey.e), sageresult))
+            try:
+                tmp_priv = RSA.construct(
+                    (int(publickey.n), int(publickey.e), sageresult)
+                )
+            except ValueError:
+                # The lattice script may print a positive but inconsistent
+                # candidate d; a failed construct is a miss, not a crash.
+                return (None, None)
             publickey.p = tmp_priv.p
             publickey.q = tmp_priv.q
             privatekey = PrivateKey(

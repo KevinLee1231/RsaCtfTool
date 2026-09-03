@@ -407,6 +407,15 @@ class RSAAttack(object):
         if not self._load_public_key(publickey):
             return
 
+        # Degenerate moduli only produce noisy crashes inside the attacks;
+        # there is never anything to factor below 4.
+        if self.publickey.n is None or self.publickey.n < 4:
+            self.logger.warning(
+                "[!] Your provided modulus is too small to factor: %s"
+                % self.publickey.n
+            )
+            return True
+
         if is_prime(self.publickey.n):
             self.logger.warning(
                 "[!] Your provided modulus is prime:\n%d\nThere is no need to run an integer factorization..."

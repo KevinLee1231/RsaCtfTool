@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack
-from RsaCtfTool.lib.keys_wrapper import PrivateKey
 from RsaCtfTool.lib.exceptions import FactorizationError
+from RsaCtfTool.lib.number_theory import gcd
 from RsaCtfTool.lib.algos import shor
 
 
@@ -15,24 +15,20 @@ class Attack(AbstractAttack):
     def attack(self, publickey, cipher=[], progress=True):
         """Run Shor attack with a timeout"""
         try:
-            publickey.p, publickey.q = shor(publickey.n)
-
+            res = shor(publickey.n)
         except FactorizationError:
             return None, None
 
-        if publickey.p is not None and publickey.q is not None:
-            try:
-                priv_key = PrivateKey(
-                    n=publickey.n,
-                    p=int(publickey.p),
-                    q=int(publickey.q),
-                    e=int(publickey.e),
-                )
-                return priv_key, None
-            except ValueError:
-                return None, None
+        # shor() falls through without a result on prime or tiny moduli.
+        if res is None:
+            return None, None
 
-        return None, None
+        p, q = res
+        # Degenerate (1, n) / (n, 1) and non-coprime splits (p**k moduli
+        # give (p, p**(k-1))) build keys with a wrong phi and a wrong d.
+        if p <= 1 or q <= 1 or gcd(p, q) != 1:
+            return None, None
+        return self.create_private_key_from_pqe(p, q, publickey.e, publickey.n)
 
     def test(self):
         from RsaCtfTool.lib.keys_wrapper import PublicKey
