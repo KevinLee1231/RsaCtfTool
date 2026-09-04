@@ -304,10 +304,32 @@ class RSAAttack(object):
         return True
 
     def _handle_provided_primes(self):
+        # A supplied prime that does not divide n would floor-divide into a
+        # wrong partner and then construct an unusable key that still stops
+        # the attack loop - reject it instead of trusting it.
         if self.args.p is not None and self.args.q is None:
-            self.args.q = self.args.n // self.args.p
+            if self.args.n is not None and self.args.n % self.args.p == 0:
+                self.args.q = self.args.n // self.args.p
+            else:
+                self.logger.error("[!] Provided p does not divide n; ignoring it.")
+                self.args.p = None
         if self.args.q is not None and self.args.p is None:
-            self.args.p = self.args.n // self.args.q
+            if self.args.n is not None and self.args.n % self.args.q == 0:
+                self.args.p = self.args.n // self.args.q
+            else:
+                self.logger.error("[!] Provided q does not divide n; ignoring it.")
+                self.args.q = None
+        if (
+            self.args.p is not None
+            and self.args.q is not None
+            and self.args.n is not None
+            and self.args.p * self.args.q != self.args.n
+        ):
+            self.logger.error(
+                "[!] Provided p and q do not multiply to n; ignoring them."
+            )
+            self.args.p = None
+            self.args.q = None
         self.need_run = self.args.p is None or self.args.q is None
         if self.args.show_modulus:
             self.logger.info("modulus: %s", self.args.n)

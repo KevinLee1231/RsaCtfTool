@@ -974,3 +974,37 @@ class TestDumpkeyExtGuard:
         _print_dumpkey_private(
             SimpleNamespace(ext=True), [pk], logging.getLogger("global_logger")
         )
+class TestProvidedPrimesValidation:
+    @staticmethod
+    def _attackobj(**kw):
+        from types import SimpleNamespace
+
+        from RsaCtfTool.lib.rsa_attack import RSAAttack
+
+        defaults = dict(
+            decrypt=None, attack=[], p=None, q=None, n=77, e=13,
+            show_modulus=False,
+        )
+        defaults.update(kw)
+        args = SimpleNamespace(**defaults)
+        return RSAAttack(args), args
+
+    def test_non_divisor_p_is_ignored(self):
+        # --p 3 --n 77 used to floor-divide into q = 25, skip every attack,
+        # and report a "success" whose private key prints as an empty blob.
+        attackobj, args = self._attackobj(p=3)
+        attackobj._handle_provided_primes()
+        assert args.p is None and args.q is None
+        assert attackobj.need_run is True
+
+    def test_valid_p_still_derives_q(self):
+        attackobj, args = self._attackobj(p=7)
+        attackobj._handle_provided_primes()
+        assert args.q == 11
+        assert attackobj.need_run is False
+
+    def test_mismatched_pq_pair_is_ignored(self):
+        attackobj, args = self._attackobj(p=7, q=13)
+        attackobj._handle_provided_primes()
+        assert args.p is None and args.q is None
+        assert attackobj.need_run is True
