@@ -1036,13 +1036,20 @@ def wiener(n, e, progress=True):
                         return pq
 
 
-def williams_pp1(n, max_v=100):
-    i2 = isqrt(n)
+def williams_pp1(n, max_v=100, stage1_bound=100000):
+    """Williams' p+1 factorisation.
+
+    The exponent chain multiplies v by p^e for every prime p up to
+    stage1_bound (e = floor(log_p stage1_bound), i.e. the smooth part of
+    the group order p+1).  Bounding by isqrt(n) - the previous choice -
+    made the prime walk reach sqrt(n), which no real-sized key can
+    complete inside any timeout.
+    """
     for seed in range(1, max_v + 1):
         p = 2
         v = seed
-        while True:
-            e = ilogb(i2, p)
+        while p <= stage1_bound:
+            e = ilogb(stage1_bound, p)
             if e == 0:
                 break
             for _ in range(e):

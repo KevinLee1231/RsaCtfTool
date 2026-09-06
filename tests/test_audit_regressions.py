@@ -4,6 +4,7 @@ Every test in this file corresponds to a defect that existed before the
 sage-compat-and-fixes branch repairs; if any of these fail, a fix has
 regressed.
 """
+import logging
 import random
 
 import pytest
@@ -1008,3 +1009,32 @@ class TestProvidedPrimesValidation:
         attackobj._handle_provided_primes()
         assert args.p is None and args.q is None
         assert attackobj.need_run is True
+
+
+class TestSixthAuditFixes:
+    def test_execute_single_attack_rejects_shell_key_without_run(self):
+        # p*q == n but gcd(e, phi) != 1: the --p/--q fast path builds an
+        # inert shell key that used to be reported as "Attack success".
+        from types import SimpleNamespace
+
+        from RsaCtfTool.lib.rsa_attack import RSAAttack
+
+        ra = object.__new__(RSAAttack)
+        ra.args = SimpleNamespace(p=5, q=7, e=4, n=35, private=True, decrypt=None)
+        ra.logger = logging.getLogger("global_logger")
+        ra.need_run = False
+        ra.priv_key = None
+        ra.decrypted = []
+        module = SimpleNamespace(can_run=lambda: True, get_name=lambda: "stub")
+
+        assert ra._execute_single_attack(module) is False
+        assert ra.priv_key is None
+
+    def test_williams_pp1_terminates_on_hard_modulus(self):
+        # The stage-1 bound must stop the prime walk; the previous
+        # isqrt(n) bound made a 510-bit modulus burn the whole timeout.
+        from RsaCtfTool.lib.algos import williams_pp1
+        from RsaCtfTool.lib.number_theory import next_prime
+
+        n = int(next_prime(2 ** 255)) * int(next_prime(2 ** 255))
+        assert williams_pp1(n) is None

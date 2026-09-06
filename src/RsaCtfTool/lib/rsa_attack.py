@@ -363,6 +363,9 @@ class RSAAttack(object):
             self.priv_key = PrivateKey(
                 self.args.p, self.args.q, self.args.e, self.args.n
             )
+            # e sharing a factor with phi yields an inert shell key; report
+            # failure instead of "success" with an unusable key.
+            self._reject_unusable_priv_key()
         if decrypted is not None and decrypted != []:
             if isinstance(decrypted, list):
                 self.decrypted = self.decrypted + decrypted
