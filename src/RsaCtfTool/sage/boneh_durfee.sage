@@ -245,7 +245,11 @@ def boneh_durfee(pol, modulus, mm, tt, XX, YY):
 
     soly = soly[0][0]
     ss = pol1(q, soly)
-    solx = ss.roots()[0][0]
+    solx = ss.roots()
+    if len(solx) == 0:
+        # print "the first vector does not lift the y-root to an x-root"
+        return 0, 0
+    solx = solx[0][0]
 
     #
     return solx, soly
