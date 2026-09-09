@@ -101,8 +101,13 @@ def strong_pseudoprime(N):
             if b == 1:
                 p = gcd(prev - 1, N)
                 q = gcd(prev + 1, N)
-                if 1 < p < q:
-                    return p, q
+                # prev^2 == 1 (mod N) splits every prime power of N between
+                # prev-1 and prev+1, so p*q == N whenever the root is
+                # nontrivial. Accept either orientation: requiring p < q
+                # discards half of all nontrivial roots (for 561 every root
+                # from the first 14 prime bases came out as p > q).
+                if p * q == N and 1 < p and 1 < q:
+                    return min(p, q), max(p, q)
                 break
         a = next_prime(a)
     return None

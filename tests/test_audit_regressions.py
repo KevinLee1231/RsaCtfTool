@@ -1038,3 +1038,48 @@ class TestSixthAuditFixes:
 
         n = int(next_prime(2 ** 255)) * int(next_prime(2 ** 255))
         assert williams_pp1(n) is None
+
+
+class TestStrongPseudoprimeOrientation:
+    """strong_pseudoprime must accept nontrivial roots in either orientation.
+
+    The old check `1 < p < q` silently discarded every root where
+    gcd(prev-1, N) exceeded gcd(prev+1, N); for 561 that was all roots
+    from the first 14 prime bases.
+    """
+
+    def test_carmichael_561_factors(self):
+        from RsaCtfTool.lib.algos import strong_pseudoprime
+
+        r = strong_pseudoprime(561)
+        assert r is not None
+        p, q = r
+        assert p * q == 561 and 1 < p < q
+
+    def test_first_base_root_is_not_wasted(self):
+        # Base 2 yields a nontrivial sqrt of 1 mod 561 with gcd(prev-1, N)
+        # larger than gcd(prev+1, N); the fixed code returns on that root
+        # without ever advancing to the next prime base.
+        import RsaCtfTool.lib.algos as algos
+
+        def boom(_):
+            raise RuntimeError("advanced past base 2")
+
+        original = algos.next_prime
+        algos.next_prime = boom
+        try:
+            r = algos.strong_pseudoprime(561)
+        finally:
+            algos.next_prime = original
+        assert r is not None and r[0] * r[1] == 561
+
+    def test_two_prime_modulus(self):
+        from RsaCtfTool.lib.algos import strong_pseudoprime
+
+        r = strong_pseudoprime(13 * 31)
+        assert r is not None and r[0] * r[1] == 13 * 31
+
+    def test_prime_returns_none(self):
+        from RsaCtfTool.lib.algos import strong_pseudoprime
+
+        assert strong_pseudoprime(17) is None

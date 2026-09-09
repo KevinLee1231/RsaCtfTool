@@ -151,9 +151,12 @@ class TestStrongPseudoprime:
         f1, f2 = result
         assert f1 * f2 == n
 
-    def test_strong_pseudoprime_returns_none(self):
+    def test_strong_pseudoprime_fifteen(self):
+        # 15 only offers nontrivial roots with gcd(prev-1, N) larger than
+        # gcd(prev+1, N); either orientation must be accepted.
         result = strong_pseudoprime(15)
-        assert result is None
+        assert result is not None
+        assert result[0] * result[1] == 15
 
     def test_strong_pseudoprime_carmichael_example(self):
         """Factor the Carmichael number from Wagstaff Example 10.5."""
