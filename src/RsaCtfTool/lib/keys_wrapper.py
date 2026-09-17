@@ -21,21 +21,29 @@ def load_partial_privkey(keyfile):
     version, modulus(n), exponent(e), d, prime(p), prime(q), dp, dq, qi = tmp
     """
     keycmd = ["openssl", "asn1parse", "-in", keyfile]
+    try:
+        lines = subprocess.check_output(keycmd).decode("utf8").splitlines()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError(f"cannot asn1-parse private key {keyfile}: {exc}")
     fields = []
     i = 0
-    for line in subprocess.check_output(keycmd).decode("utf8").splitlines():
+    for line in lines:
         if "hl=2 l=   0 prim: " not in line:
-            if i > 0:
-                val = 0
-                if "INTEGER" in line:
-                    if "BAD INTEGER" in line:
-                        val = int(
-                            line.split(":")[4].replace("[", "").replace("]", ""), 16
-                        )
-                    else:
-                        val = int(line.split(":")[3], 16)
+            if i > 0 and "INTEGER" in line:
+                # Non-INTEGER lines (OCTET STRING headers etc.) carry no key
+                # field; padding them with 0 used to shift every later field.
+                if "BAD INTEGER" in line:
+                    val = int(
+                        line.split(":")[4].replace("[", "").replace("]", ""), 16
+                    )
+                else:
+                    val = int(line.split(":")[3], 16)
                 fields.append(val)
             i += 1
+    if len(fields) < 9:
+        raise ValueError(
+            f"private key {keyfile} yielded only {len(fields)} fields, expected 9"
+        )
     return fields
 
 
@@ -92,6 +100,8 @@ class PublicKey(object):
 
     def __str__(self):
         """Print armored public key"""
+        if isinstance(self.key, bytes):
+            return self.key.decode("utf-8")
         return self.key
 
 
@@ -149,11 +159,12 @@ class PrivateKey(object):
         if isinstance(password, str):
             password = password.encode()
         with open(filename, "rb") as key_data_fd:
+            pem_bytes = key_data_fd.read()
             try:
-                self.key = serialization.load_pem_private_key(
-                    key_data_fd.read(), password=password, backend=default_backend()
+                loaded = serialization.load_pem_private_key(
+                    pem_bytes, password=password, backend=default_backend()
                 )
-                private_numbers = self.key.private_numbers()
+                private_numbers = loaded.private_numbers()
                 loadok = True
             except Exception:
                 loadok = False
@@ -172,6 +183,15 @@ class PrivateKey(object):
                     self.n = public_numbers.n
                 self.filename = filename
                 self._compute_phi()
+                # Rebuild a PyCryptodome key from the recovered components so
+                # __str__/decrypt see the same uniform RSA object interface
+                # instead of a cryptography-library key without exportKey().
+                try:
+                    self.key = RSA.construct(
+                        (self.n, self.e, self.d, self.p, self.q)
+                    )
+                except (ValueError, IndexError, NotImplementedError, TypeError):
+                    self._pem_bytes = pem_bytes
             else:
                 tmp = load_partial_privkey(filename)
                 self.n = tmp[1]
@@ -202,6 +222,7 @@ class PrivateKey(object):
         :param n: n from public key
         """
         self.key = None
+        self._pem_bytes = None
         self.filename = filename
         self._init_fields(p, q, e, n, d, phi)
         self._compute_phi()
@@ -225,16 +246,26 @@ class PrivateKey(object):
         if not isinstance(cipher, list):
             cipher = [cipher]
 
+        # Build the OAEP decryptor once instead of re-importing per cipher;
+        # stays None when no constructable key exists.
+        rsakey = None
+        pem = str(self)
+        if pem:
+            try:
+                rsakey = PKCS1_OAEP.new(RSA.importKey(pem))
+            except Exception:
+                rsakey = None
+
         plain = []
         for c in cipher:
             # PKCS#1 OAEP first: it validates its own padding and fails
             # cleanly on anything else.
-            try:
-                rsakey = RSA.importKey(str(self))
-                plain.append(PKCS1_OAEP.new(rsakey).decrypt(c))
-                continue
-            except Exception:
-                pass
+            if rsakey is not None:
+                try:
+                    plain.append(rsakey.decrypt(c))
+                    continue
+                except Exception:
+                    pass
 
             # Textbook RSA with the recovered exponent.
             if self.n is not None and self.d is not None:
@@ -254,8 +285,14 @@ class PrivateKey(object):
         return plain
 
     def __str__(self):
-        # print(type(self.key))
         """Print armored private key"""
         if self.key is not None:
-            return self.key.exportKey().decode("utf-8")
+            export = getattr(self.key, "exportKey", None) or getattr(
+                self.key, "export_key", None
+            )
+            if export is not None:
+                out = export()
+                return out.decode("utf-8") if isinstance(out, bytes) else out
+        if self._pem_bytes is not None:
+            return self._pem_bytes.decode("utf-8")
         return ""

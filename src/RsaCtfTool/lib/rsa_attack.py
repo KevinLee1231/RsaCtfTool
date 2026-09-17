@@ -5,6 +5,7 @@ import time
 import logging
 import importlib
 import inspect
+import sys
 import traceback
 from RsaCtfTool.lib.keys_wrapper import PublicKey, PrivateKey
 from RsaCtfTool.lib.exceptions import FactorizationError
@@ -103,13 +104,14 @@ class RSAAttack(object):
                 ok = False
             i = isqrt(publickey.n)
             if publickey.n == (i**2):
-                self.logger.error(
-                    f"[!] Public key: {publickey.filename} modulus should not be a perfect square."
+                # Not a failure: p = q = isqrt(n) are the factors, and
+                # attacks such as nonRSA handle prime powers directly.
+                self.logger.warning(
+                    f"[!] Public key: {publickey.filename} modulus is a perfect square; p = q = isqrt(n)."
                 )
                 publickey.p = i
                 publickey.q = i
                 tmp.append(publickey)
-                ok = False
         return (tmp, ok)
 
     def get_attack(self, attack, multikeys):
@@ -121,15 +123,9 @@ class RSAAttack(object):
 
     def load_attacks(self, attacks_list, multikeys=False):
         """Dynamic load attacks according to context (single key or multiple keys)"""
-        try:
-            attacks_list.remove("all")
-        except ValueError:
-            pass
-
-        try:
-            attacks_list.remove("nullattack")
-        except ValueError:
-            pass
+        # Work on a copy: the caller's list is usually args.attacks_list,
+        # which later phases (test mode, multi-key mode) still need intact.
+        attacks_list = [a for a in attacks_list if a not in ("all", "nullattack")]
 
         for attack in attacks_list:
             if attack in self.args.attack or "all" in self.args.attack:
@@ -156,9 +152,13 @@ class RSAAttack(object):
                     self.implemented_attacks.append(
                         attack_module.Attack(**constructor_args)
                     )
-                except ModuleNotFoundError:
-                    # print(f"[-] Attack {attack} not found...")
-                    pass
+                except ModuleNotFoundError as exc:
+                    # attacks_list mixes single_key and multi_keys names, so
+                    # names absent from *this* package are expected; a module
+                    # that exists but fails on its own third-party imports
+                    # (e.g. missing z3) must not vanish silently.
+                    if exc.name is None or not exc.name.startswith("RsaCtfTool."):
+                        self.logger.debug(f"[-] Attack {attack} unavailable: {exc}")
         self.implemented_attacks.sort(key=lambda x: x.speed, reverse=True)
 
     def priv_key_send2fdb(self):
@@ -193,7 +193,7 @@ class RSAAttack(object):
 
         if not publickeys_obj:
             self.logger.error("No key loaded.")
-            exit(1)
+            sys.exit(1)
 
         self.publickey = publickeys_obj
         if self.args.check_publickey:
@@ -418,8 +418,10 @@ class RSAAttack(object):
                 % (round(tmin, 4), round(tmax, 4), round(tavg, 4))
             )
 
-    def attack_single_key(self, publickey, attacks_list=[], test=False):
+    def attack_single_key(self, publickey, attacks_list=None, test=False):
         """Run attacks on single keys"""
+        if attacks_list is None:
+            attacks_list = []
         num_attacks = len(attacks_list)
         if num_attacks == 0:
             self.args.attack = "all"

@@ -16,16 +16,18 @@ class Attack(AbstractAttack):
         limit = 30000
         p = q = None
         f = 1
+        n = publickey.n
         for x in tqdm(range(2, limit), disable=(not progress)):
-            # f  = fac(x)
-            f *= x
-            g = gcd(f - 1, publickey.n)
+            # f = x! mod n; gcd(f - 1, n) is unaffected by the reduction and
+            # keeping f small avoids ever-growing bignum gcds.
+            f = (f * x) % n
+            g = gcd(f - 1, n)
             if 1 < g < publickey.n:
                 p = publickey.n // g
                 q = g
                 break
-            g = gcd(f + 1, publickey.n)
-            if 1 < g < publickey.n:
+            g = gcd(f + 1, n)
+            if 1 < g < n:
                 p = publickey.n // g
                 q = g
                 break

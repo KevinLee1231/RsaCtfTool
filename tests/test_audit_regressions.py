@@ -230,13 +230,15 @@ class TestSageHelperScriptPreflight:
 
 
 class TestWolframAlphaPreflight:
-    def test_api_key_alone_does_not_enable(self, monkeypatch):
-        import shutil
+    def test_api_key_enables_only_with_package(self, monkeypatch):
+        # wolframalpha is a Python library: with an API key set, can_run
+        # follows whether the module is importable, not any PATH binary.
+        import importlib.util
         from RsaCtfTool.attacks.single_key.wolframalpha import Attack
 
         monkeypatch.setenv("WA_API_KEY", "dummy-key")
-        binary_present = shutil.which("wolframalpha") is not None
-        assert Attack().can_run() is binary_present
+        package_present = importlib.util.find_spec("wolframalpha") is not None
+        assert Attack().can_run() is package_present
 
     def test_missing_api_key_disables(self, monkeypatch):
         from RsaCtfTool.attacks.single_key.wolframalpha import Attack
@@ -1083,3 +1085,60 @@ class TestStrongPseudoprimeOrientation:
         from RsaCtfTool.lib.algos import strong_pseudoprime
 
         assert strong_pseudoprime(17) is None
+
+
+class TestSixthAuditRegressions:
+    """Fixes from the sixth audit pass (2026-09)."""
+
+    def test_williams_pp1_wrapper_returns_key(self):
+        # algos.williams_pp1 returns a (p, q) tuple; the wrapper used to
+        # treat it as a single factor and always reported a miss.
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+        from RsaCtfTool.attacks.single_key.williams_pp1 import Attack
+
+        p, q, e = 601, 401, 65537
+        pub = PublicKey(RSA.construct((p * q, e)).publickey().exportKey())
+        priv, _ = Attack().attack(pub, progress=False)
+        assert priv is not None
+        assert {int(priv.p), int(priv.q)} == {p, q}
+
+    def test_private_key_from_file_str_and_decrypt(self, tmp_path):
+        # A PrivateKey loaded from a file used to keep a cryptography
+        # object that crashed __str__; decrypt must keep working too.
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PrivateKey
+
+        p, q, e = 61, 53, 17
+        n = p * q
+        d = pow(e, -1, (p - 1) * (q - 1))
+        key = RSA.construct((n, e, d))
+        keyfile = tmp_path / "priv.pem"
+        keyfile.write_bytes(key.exportKey())
+
+        priv = PrivateKey(filename=str(keyfile))
+        pem = str(priv)
+        assert "BEGIN" in pem and "PRIVATE KEY" in pem
+
+        m = 42
+        c = pow(m, e, n)
+        decrypted = priv.decrypt([c.to_bytes((c.bit_length() + 7) // 8, "big")])
+        assert decrypted and int.from_bytes(decrypted[0], "big") == m
+
+    def test_chinese_remainder_rejects_non_coprime_moduli(self):
+        # gmpy invert() returns 0 for non-invertible elements, which used
+        # to silently produce a wrong residue.
+        import pytest as _pytest
+        from RsaCtfTool.lib.number_theory import chinese_remainder
+
+        with _pytest.raises(ValueError):
+            chinese_remainder([3, 3], [2, 1])
+
+    def test_pollard_p_1_smooth(self):
+        # Single-base accumulation must still factor p-1 smooth moduli.
+        from RsaCtfTool.lib.algos import pollard_P_1
+
+        p, q = 101, 151
+        r = pollard_P_1(p * q, progress=False)
+        assert r is not None
+        assert {int(r[0]), int(r[1])} == {p, q}

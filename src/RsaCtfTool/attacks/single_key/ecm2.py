@@ -62,16 +62,18 @@ class Attack(AbstractAttack):
 
             plain = []
             if cipher is not None and len(cipher) > 0:
+                # d depends only on (e, phi); a failure here applies to every
+                # ciphertext alike, so compute it once instead of per cipher.
+                try:
+                    d = invert(publickey.e, phi)
+                except ZeroDivisionError:
+                    return (None, None)
                 for c in cipher:
-                    try:
-                        cipher_int = int.from_bytes(c, "big")
-                        d = invert(publickey.e, phi)
-                        m = hex(powmod(cipher_int, d, publickey.n))[2::]
-                        if len(m) % 2 != 0:
-                            m = f"0{m}"
-                        plain.append(bytes.fromhex(m))
-                    except ZeroDivisionError:
-                        continue
+                    cipher_int = int.from_bytes(c, "big")
+                    m = hex(powmod(cipher_int, d, publickey.n))[2::]
+                    if len(m) % 2 != 0:
+                        m = f"0{m}"
+                    plain.append(bytes.fromhex(m))
 
             return (None, plain)
         except KeyboardInterrupt:

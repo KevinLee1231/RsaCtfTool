@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import importlib.util
 import json
 import os
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack
@@ -12,13 +13,15 @@ class Attack(AbstractAttack):
         super().__init__(timeout)
         self.speed = AbstractAttack.speed_enum["medium"]
         self.wa_client = None
-        self.required_binaries = ["wolframalpha"]
-
 
     def can_run(self):
-        # Keep the parent binary/script preflight; the API key is an
-        # additional requirement, not a replacement for the binary check.
-        return super().can_run() and os.environ.get("WA_API_KEY") is not None
+        # wolframalpha is a Python library, not an executable: check for an
+        # importable module plus the API key instead of a PATH binary.
+        return (
+            super().can_run()
+            and importlib.util.find_spec("wolframalpha") is not None
+            and os.environ.get("WA_API_KEY") is not None
+        )
 
     def wa_query_factors(self, n, safe=True):
         tmp = []

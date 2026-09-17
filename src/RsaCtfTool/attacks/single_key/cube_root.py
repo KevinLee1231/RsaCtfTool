@@ -11,7 +11,7 @@ class Attack(AbstractAttack):
 
     def attack(self, publickey, cipher=[], progress=True):
         """Try to decrypt c if m < n/e and small e"""
-        if publickey.e not in [3, 5]:
+        if publickey.e < 3 or publickey.e & 1 == 0:
             return None, None
         plain = []
         if (cipher is None) or (len(cipher) < 1):

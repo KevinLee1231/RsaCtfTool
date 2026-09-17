@@ -32,7 +32,12 @@ class Attack(AbstractAttack):
             es[key.e][1].append(ciphers[ind])
 
         for e in es:
-            maybe_plaintext_to_the_e = chinese_remainder(*es[e])
+            try:
+                maybe_plaintext_to_the_e = chinese_remainder(*es[e])
+            except ValueError:
+                # Moduli sharing a factor cannot be combined with CRT; that
+                # case belongs to the gcd attack, skip this exponent group.
+                continue
             maybe_plaintext = int(introot(maybe_plaintext_to_the_e, e))
 
             if (

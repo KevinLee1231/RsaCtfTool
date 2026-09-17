@@ -3,6 +3,8 @@
 Unit tests for the number_theory module.
 """
 
+import pytest
+
 from RsaCtfTool.lib.number_theory import (
     gcd,
     gcdext,
@@ -257,7 +259,10 @@ class TestChineseRemainder:
         assert chinese_remainder([3, 5, 7], [2, 3, 2]) == 23
 
     def test_chinese_remainder_same_modulus(self):
-        pass  # Same modulus with different remainers is invalid
+        # Same modulus with different remainders is inconsistent, and the
+        # classic formula requires pairwise coprime moduli in any case.
+        with pytest.raises(ValueError):
+            chinese_remainder([3, 3], [2, 1])
 
 
 class TestRationalToContfrac:
@@ -576,10 +581,14 @@ class TestTrivialFactorization:
         n = 15
         phi = 8
         result = trivial_factorization_with_n_phi(n, phi)
-        assert result is not None or True
+        assert result is not None
+        p, q = result
+        assert {p, q} == {3, 5}
 
     def test_trivial_with_n_b(self):
         n = 15
-        phi = 8
-        result = trivial_factorization_with_n_b(n, phi)
-        assert result is not None or True
+        b = 8  # b = p + q for n = 15
+        result = trivial_factorization_with_n_b(n, b)
+        assert result is not None
+        p, q = result
+        assert {p, q} == {3, 5}

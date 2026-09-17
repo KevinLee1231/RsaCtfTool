@@ -15,11 +15,6 @@ class Attack(AbstractAttack):
 
     def attack(self, publickey, cipher=[], progress=True):
         """Run attack with Euler method"""
-        if not hasattr(publickey, "p"):
-            publickey.p = None
-        if not hasattr(publickey, "q"):
-            publickey.q = None
-
         # Euler attack
         try:
             if is_congruent(publickey.n, 1, 4):

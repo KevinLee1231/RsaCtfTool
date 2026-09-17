@@ -6,8 +6,6 @@ from RsaCtfTool.attacks.abstract_attack import AbstractAttack
 from RsaCtfTool.lib.number_theory import isqrt, next_prime
 from RsaCtfTool.lib.keys_wrapper import PrivateKey
 
-set_param("parallel.enable", True)
-
 
 class Attack(AbstractAttack):
     def __init__(self, timeout=60):
@@ -28,6 +26,7 @@ class Attack(AbstractAttack):
         The problem of SAT solving integer factorization still is NP complete,
         making this just a showcase. Don't expect big gains.
         """
+        set_param("parallel.enable", True)
         s = Solver()
         s.set("timeout", timeout_amount * 1000)
         p = Int("p")
@@ -58,11 +57,6 @@ class Attack(AbstractAttack):
             return None, None
 
     def attack(self, publickey, cipher=[], progress=True):
-        if not hasattr(publickey, "p"):
-            publickey.p = None
-        if not hasattr(publickey, "q"):
-            publickey.q = None
-
         # solve with z3 theorem prover
         try:
             z3_res = self.z3_solve(publickey.n, self.timeout)

@@ -36,7 +36,7 @@ class Attack(AbstractAttack):
             ValueError,
         ):
             return (None, None)
-        if p > 0:
+        if 1 < p < publickey.n and publickey.n % p == 0:
             q = publickey.n // p
             privatekey = PrivateKey(
                 p=p,

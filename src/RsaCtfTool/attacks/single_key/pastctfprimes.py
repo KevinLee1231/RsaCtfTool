@@ -18,9 +18,9 @@ class Attack(AbstractAttack):
         data_dir = Path(__file__).resolve().parents[2] / "data"
         for txtfile in data_dir.glob("*.txt"):
             self.logger.info(f"[+] loading prime list file {txtfile}...")
-            primes = sorted(
-                [int(line.rstrip()) for line in txtfile.read_text().splitlines()]
-            )
+            primes = [
+                int(line.rstrip()) for line in txtfile.read_text().splitlines()
+            ]
             for prime in tqdm(primes, disable=(not progress)):
                 if is_divisible(publickey.n, prime):
                     publickey.q = prime

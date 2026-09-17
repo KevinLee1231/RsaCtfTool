@@ -240,7 +240,10 @@ def _try_smooth_dependency(rows, relations, base, t, n):
     """
     m = len(relations)
     for bits, rel_mask in rows:
-        if bits == 0 and rel_mask & (rel_mask - 1):
+        # rel_mask may be a single relation: one row already in null space
+        # means that relation is itself a square (x² ≡ y² with one term),
+        # which is a perfectly valid dependency - e.g. 9² ≡ 2² (mod 77).
+        if bits == 0 and rel_mask != 0:
             x = 1
             total_exp = [0] * t
             for i in range(m):
@@ -324,7 +327,7 @@ def _build_qs_factor_base(n, B):
     return base, sqrt_map
 
 
-def _qs_sieve_interval(n, base, sqrt_map, M, progress=True):
+def _qs_sieve_interval(n, base, sqrt_map, M, progress=True, exclude_halfwidth=0):
     """Sieve Q(x) = x^2 - n over x in [sqrt(n)-M, sqrt(n)+M].
 
     Real logarithmic sieving: for every factor-base prime the stored
@@ -333,6 +336,9 @@ def _qs_sieve_interval(n, base, sqrt_map, M, progress=True):
     smooth part of |Q(x)|. Only positions whose accumulated value comes
     within a small margin of log2|Q(x)| undergo exact trial division,
     which remains the final arbiter of smoothness.
+
+    exclude_halfwidth > 0 skips the inner [sqrt(n)-h, sqrt(n)+h] shell,
+    letting retries widen M without re-scanning the previous interval.
 
     Returns list of (x, parity_mask, full_exp) relations compatible
     with _try_smooth_dependency / _gaussian_elimination_gf2.
@@ -397,9 +403,12 @@ def _qs_sieve_interval(n, base, sqrt_map, M, progress=True):
     with tqdm(total=size, disable=not progress, desc="QS trial") as pbar:
         for i in range(size):
             pbar.update(1)
+            off = i - M
+            if exclude_halfwidth and -exclude_halfwidth <= off <= exclude_halfwidth:
+                continue
             if logs[i] < log_q[i] - margin:
                 continue
-            x = X + (-M + i)
+            x = X + off
             q_val = x * x - n
             if q_val == 0:
                 continue
@@ -456,8 +465,15 @@ def quadratic_sieve(n, B=None, M=None, progress=True, n_extra=10, max_retries=6)
         return None
 
     n_needed = t + n_extra
+    relations = []
+    sieved_halfwidth = 0
     for _attempt in range(max_retries):
-        relations = _qs_sieve_interval(n, base, sqrt_map, M, progress)
+        # Only sieve the newly exposed outer shell; the inner interval was
+        # already scanned with the same deterministic parameters.
+        relations.extend(
+            _qs_sieve_interval(n, base, sqrt_map, M, progress, sieved_halfwidth)
+        )
+        sieved_halfwidth = M
 
         if len(relations) < n_needed:
             M = min(M * 2, 5000000)
@@ -876,22 +892,36 @@ def solve_partial_q(n, e, dp, dq, qi, part_q, progress=True, Limit=100000):
 
 
 def pollard_P_1(n, progress=True):
-    """Pollard P1 implementation"""
-    z = []
+    """Pollard's p-1 factorisation, stage 1.
+
+    Single-base accumulation a <- a^p mod n walking the prime powers one
+    at a time, with a gcd check after every single power. Checking only
+    at prime boundaries collides into gcd == n whenever both factors are
+    smooth against the same bound (their orders start dividing the
+    accumulated exponent at the same checkpoint); per-power checks split
+    them at different steps. The old form restarted a fresh full-length
+    exponentiation chain per prime, an O(#primes * |z|) blowup in powmods.
+    """
     logn = log(isqrt(n))
-    prime = primes(997)
-
-    for j in range(0, len(prime)):
-        primej = prime[j]
-        logp = log(primej)
-        z.extend(primej for _ in range(1, int(logn / logp) + 1))
-
-    for pp in tqdm(prime, disable=(not progress)):
-        for i in range(0, len(z)):
-            pp = powmod(pp, z[i], n)
-            p = gcd(n, pp - 1)
-            if n > p > 1:
-                return p, n // p
+    prime = list(primes(997))
+    for start in (2, 3, 5, 7):
+        a = start
+        overshot = False
+        for pp in tqdm(prime, disable=(not progress)):
+            e = int(logn / log(pp)) + 1
+            for _ in range(e):
+                a = powmod(a, pp, n)
+                p = gcd(n, a - 1)
+                if p == n:
+                    # The base's order divides both p-1 and q-1; another
+                    # base usually splits them apart.
+                    overshot = True
+                    break
+                if p > 1:
+                    return int(p), int(n // p)
+            if overshot:
+                break
+    return None
 
 
 def pollard_rho(n, max_retries=8):
@@ -1078,9 +1108,8 @@ def difference_of_powers_factor(n):
         for k in range(1, int(log(n) / log(a)) + 1):
             if (1 << k) > n:
                 break
-            a_k *= a
-            if a_k > n:
-                break
+            # Test a^k ± n for being a k-th power *before* raising the
+            # exponent; the old order tested a^(k+1) ± n as a k-th power.
             for sign in [-1, 1]:
                 if (b_k := a_k + sign * n) > 0:
                     b, e = iroot(b_k, k)
@@ -1089,4 +1118,7 @@ def difference_of_powers_factor(n):
                             F.add(f1)
                         if 1 < (f2 := gcd(a + b, n)) < n:
                             F.add(f2)
+            a_k *= a
+            if a_k > n:
+                break
     return sorted(F)

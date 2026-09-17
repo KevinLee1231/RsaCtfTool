@@ -14,7 +14,7 @@ class Attack(AbstractAttack):
         super().__init__(timeout)
         self.speed = AbstractAttack.speed_enum["slow"]
         self.logger = logging.getLogger("global_logger")
-        self.required_binaries = ["neca", "sage"]
+        self.required_binaries = ["neca"]
 
     def attack(self, publickey, cipher=[], progress=True):
         if is_roca_vulnerable(publickey.n):

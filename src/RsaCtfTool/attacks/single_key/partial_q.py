@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack
 from RsaCtfTool.lib.keys_wrapper import PrivateKey

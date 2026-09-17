@@ -17,9 +17,7 @@ class Attack(AbstractAttack):
         self.londahl_b = 1000000
 
     def attack(self, publickey, cipher=[], progress=True):
-        """Do nothing, used for multi-key attacks that succeeded so we just print the
-        private key without spending any time factoring
-        """
+        """Run the Londahl close-prime factorisation attack"""
         factors = close_factor(publickey.n, self.londahl_b, progress)
 
         if factors is not None:

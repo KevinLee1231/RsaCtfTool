@@ -122,10 +122,8 @@ def remove_unhelpful(BB, monomials, bound, current):
 
 
 """
-Returns:
-* 0,0   if it fails
-* -1,-1 if `strict=true`, and determinant doesn't bound
-* x0,y0 the solutions of `pol`
+Returns a list of (x0, y0) candidate solutions of `pol`; empty on failure
+(including the `strict=true` determinant-bound case).
 """
 
 
@@ -192,7 +190,7 @@ def boneh_durfee(pol, modulus, mm, tt, XX, YY):
         nn = BB.dimensions()[0]
         if nn == 0:
             # print "failure"
-            return 0, 0
+            return []
 
     # check if vectors are helpful
     if debug:
@@ -208,7 +206,7 @@ def boneh_durfee(pol, modulus, mm, tt, XX, YY):
             diff = (log(det) - log(bound)) / log(2)
             print("size det(L) - size e^(m*n) = ", floor(diff))
         if strict:
-            return -1, -1
+            return []
     # else:
         # print "det(L) < e^(m*n) (good! If a solution exists < N^delta, it will be found)"
 
@@ -232,27 +230,25 @@ def boneh_durfee(pol, modulus, mm, tt, XX, YY):
 
     if rr.is_zero() or rr.monomials() == [1]:
         # print "the two first vectors are not independent"
-        return 0, 0
+        return []
 
     rr = rr(q, q)
 
-    # solutions
+    # solutions: walk every y-root and every x-root lifting it; the true
+    # pair is not always the first one Sage returns, and stopping at
+    # roots()[0] silently misses factorable keys.
     soly = rr.roots()
 
     if len(soly) == 0:
         # print "Your prediction (delta) is too small"
-        return 0, 0
+        return []
 
-    soly = soly[0][0]
-    ss = pol1(q, soly)
-    solx = ss.roots()
-    if len(solx) == 0:
-        # print "the first vector does not lift the y-root to an x-root"
-        return 0, 0
-    solx = solx[0][0]
-
-    #
-    return solx, soly
+    solutions = []
+    for y0, _ in soly:
+        ss = pol1(q, y0)
+        for x0, _ in ss.roots():
+            solutions.append((x0, y0))
+    return solutions
 
 
 def main(N, e):
@@ -302,17 +298,22 @@ def main(N, e):
         print("=== running algorithm ===")
         start_time = time.time()
 
-    solx, soly = boneh_durfee(pol, e, m, t, X, Y)
+    solutions = boneh_durfee(pol, e, m, t, X, Y)
 
-    if solx > 0:
-        # print("=== solutions found ===")
-        if debug:
-            print("x:", solx)
-            print("y:", soly)
+    found = False
+    for solx, soly in solutions:
+        if solx > 0:
+            # print("=== solutions found ===")
+            if debug:
+                print("x:", solx)
+                print("y:", soly)
 
-        d = int(pol(solx, soly) / e)
-        print(d)
-    else:
+            # one candidate d per line; the wrapper validates each with
+            # RSA.construct and picks the first consistent one
+            d = int(pol(solx, soly) / e)
+            print(d)
+            found = True
+    if not found:
         print(0)
 
     if debug:

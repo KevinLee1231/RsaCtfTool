@@ -45,7 +45,7 @@ class Attack(AbstractAttack):
         self.speed = AbstractAttack.speed_enum["medium"]
 
     def attack(self, publickey, cipher=[], progress=True):
-        """Run fermat attack with a timeout"""
+        """Test n against gcds with inverted-factorial products in multiple bases"""
         try:
             pq = FF(publickey.n)
             if len(pq) == 2:

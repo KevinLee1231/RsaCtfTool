@@ -77,6 +77,9 @@ class AbstractAttack(object):
             try:
                 return self.attack(publickeys, cipher, progress)
             except TimeoutError:
+                self.logger.warning(
+                    f"[!] Timeout during {self.get_name()} attack."
+                )
                 return None, None
 
     def test(self) -> None:
@@ -136,9 +139,3 @@ class AbstractAttack(object):
             except (ValueError, TypeError):
                 return None, None
         return None, None
-
-
-# Configure logger
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)

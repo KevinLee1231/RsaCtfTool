@@ -190,7 +190,8 @@ class TimeoutError(Exception):
         return repr(self.value)
 
 
-DEFAULT_TIMEOUT_MESSAGE = os.strerror(errno.ETIME)
+# errno.ETIME is Linux-specific (absent on macOS); fall back to ETIMEDOUT.
+DEFAULT_TIMEOUT_MESSAGE = os.strerror(getattr(errno, "ETIME", errno.ETIMEDOUT))
 
 
 class timeout(contextlib.ContextDecorator):
@@ -228,6 +229,7 @@ class timeout(contextlib.ContextDecorator):
             self.seconds, alarm_func
         )  # this thread will send signal when timeout
         self.timer.start()
+        return self
 
     def __exit__(self, exc_type, _exc_val, _exc_tb):
         if self.timer is not None:

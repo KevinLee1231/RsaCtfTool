@@ -11,7 +11,7 @@ class Attack(AbstractAttack):
         self.speed = AbstractAttack.speed_enum["medium"]
 
     def attack(self, publickey, cipher=[], progress=True):
-        """Run fermat attack with a timeout"""
+        """Run the SQUFOF factorisation attack"""
 
         try:
             publickey.p, publickey.q = SQUFOF(publickey.n)

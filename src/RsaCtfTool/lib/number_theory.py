@@ -155,6 +155,7 @@ def _introot_gmpy2(n, r=2):
 
 
 def _invmod(a, m):
+    mod = m
     a, x, u = a % m, 0, 1
     while a:
         x, u, m, a = u, x - (m // a) * u, a, m % a
@@ -162,7 +163,9 @@ def _invmod(a, m):
         # Match gmpy2's contract: no inverse -> ZeroDivisionError, never
         # a silently wrong value.
         raise ZeroDivisionError("invert() no inverse exists")
-    return x
+    # The extended-gcd walk can end on a negative Bezout coefficient;
+    # gmpy2.invert always returns the canonical residue in [0, mod).
+    return x % mod
 
 
 def _is_square(n):
@@ -227,6 +230,15 @@ def _is_prime(n):
     If all the previous tests pass then we try with Rabin-Miller.
     All the tests are probabilistic.
     """
+    if n < 2:
+        return False
+    # The Fermat criterion degenerates for the small primes themselves:
+    # pow(b, n-1, n) == 0 when b == n, so 2, 3 and 5 must be accepted
+    # before any base-2/3/5 test runs.
+    if n in (2, 3, 5):
+        return True
+    if n & 1 == 0:
+        return False
     if all(
         (
             _fermat_prime_criterion(n),
@@ -260,6 +272,23 @@ def erathostenes_sieve(n):
 
 
 _primes = erathostenes_sieve
+
+
+def _primes_first(n):
+    """First n primes, pure-Python.
+
+    The gmpy binding of `primes()` means "first n primes" while the
+    fallback sieve meant "primes below n"; this fallback matches the gmpy
+    semantics so dixon/QS/pollard_P_1 factor bases are identical on both
+    backends.
+    """
+    if n <= 0:
+        return []
+    if n < 6:
+        return [2, 3, 5, 7, 11][:n]
+    # Rosser's theorem: the n-th prime is below n*(ln n + ln ln n) for n >= 6.
+    bound = int(n * (math.log(n) + math.log(math.log(n)))) + 10
+    return erathostenes_sieve(bound)[:n]
 
 
 def _primes_yield_gmpy(n):
@@ -415,7 +444,7 @@ if gmpy_version > 0:
 
     isqrt = gmpy.isqrt
 else:
-    primes = _primes
+    primes = _primes_first
     remove = _remove
     iroot = _iroot
     gcd = _gcd
@@ -532,12 +561,29 @@ def phi(n, factors):
             y *= p - 1
             n, _ = remove(n, p)
     if n > 1:
-        y //= n
-        y *= n - 1
+        if is_prime(n):
+            y //= n
+            y *= n - 1
+        else:
+            # A composite residual means `factors` missed a divisor;
+            # multiplying (n-1)/n as if it were prime returns a silently
+            # wrong totient.
+            raise ValueError(
+                "phi() got an incomplete factorisation: residual %d is composite" % n
+            )
     return y
 
 
 def chinese_remainder(m, a):
+    # The classic product formula requires pairwise coprime moduli; with
+    # gmpy a non-invertible Ni silently becomes 0 and yields a wrong
+    # residue, so reject the input instead.
+    for i, mi in enumerate(m):
+        for mj in m[i + 1:]:
+            if gcd(mi, mj) != 1:
+                raise ValueError(
+                    "chinese_remainder: moduli must be pairwise coprime"
+                )
     S = 0
     N = list_prod(m)
     for mi, ai in zip(m, a):
@@ -615,8 +661,22 @@ def contfrac_to_rational(frac):
 
 
 def convergents_from_contfrac(frac, progress=False):
-    """Convergents_from_contfrac implementation"""
-    return [contfrac_to_rational(frac[:i]) for i in range(0, len(frac))]
+    """Convergents of a continued fraction.
+
+    Single forward recurrence (O(k)) instead of recomputing every prefix
+    independently (O(k^2)); the output is unchanged: convergents of the
+    prefixes of length 0..len(frac)-1.
+    """
+    convs = [(0, 1)]
+    n1, n0 = 1, 0  # p(-1), p(-2)
+    d1, d0 = 0, 1  # q(-1), q(-2)
+    for a in frac[:-1]:
+        n2 = a * n1 + n0
+        d2 = a * d1 + d0
+        n1, n0 = n2, n1
+        d1, d0 = d2, d1
+        convs.append((n2, d2))
+    return convs if frac else []
 
 
 def inv_mod_pow_of_2(factor, bit_count):
@@ -661,12 +721,14 @@ def is_lucas(n):
     True if n is a Lucas number (A000032).
     """
 
-    def sign(n):
-        return 1 if n > 0 else -1
-
     u1, u2 = 1, 3
+    if n <= 0:
+        return False
     if n <= 2:
-        return sign(n)
+        # 1 and 2 are both Lucas numbers (L_1 = 1, L_0 = 2); the old
+        # sign() path returned the int +/-1, which is truthy even for
+        # non-Lucas and negative inputs.
+        return True
     else:
         while n > u2:
             old_u1, u1 = u1, u2

@@ -3,7 +3,7 @@
 
 from tqdm import tqdm
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack
-from RsaCtfTool.lib.number_theory import gcd, next_prime
+from RsaCtfTool.lib.number_theory import gcd, is_prime
 
 
 class Attack(AbstractAttack):
@@ -12,25 +12,28 @@ class Attack(AbstractAttack):
         self.speed = AbstractAttack.speed_enum["medium"]
 
     def attack(self, publickey, cipher=[], progress=True):
-        """Run tests against factorial +-1 composites"""
+        """Run tests against compositorial +-1 composites"""
         limit = 10001
         p = q = None
         F = 1
-        p = 2
+        n = publickey.n
 
         for x in tqdm(range(2, limit), disable=(not progress)):
-            F *= x
-            while F % p == 0:
-                F //= p
-                p = next_prime(p)
-            g = gcd(F - 1, publickey.n)
-            if 1 < g < publickey.n:
-                p = publickey.n // g
+            # compositorial(x) = x! / primorial(x) = product of composites
+            # <= x. The old loop stripped primes through a shared cursor that
+            # also clobbered the result variable p; multiplying only the
+            # composite x is the same product. F stays reduced mod n, which
+            # leaves the gcds below unchanged.
+            if not is_prime(x):
+                F = (F * x) % n
+            g = gcd(F - 1, n)
+            if 1 < g < n:
+                p = n // g
                 q = g
                 break
-            g = gcd(F + 1, publickey.n)
-            if 1 < g < publickey.n:
-                p = publickey.n // g
+            g = gcd(F + 1, n)
+            if 1 < g < n:
+                p = n // g
                 q = g
                 break
         return self.create_private_key_from_pqe(p, q, publickey.e, publickey.n)

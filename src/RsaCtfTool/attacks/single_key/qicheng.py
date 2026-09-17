@@ -35,10 +35,11 @@ class Attack(AbstractAttack):
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError):
             return (None, None)
 
-        if sageresult <= 0:
+        p = sageresult
+        if not (1 < p < publickey.n) or publickey.n % p != 0:
             return (None, None)
-        q = publickey.n // sageresult
-        priv_key = PrivateKey(sageresult, int(q), int(publickey.e), int(publickey.n))
+        q = publickey.n // p
+        priv_key = PrivateKey(int(p), int(q), int(publickey.e), int(publickey.n))
         return (priv_key, None)
 
     def test(self):
@@ -50,7 +51,6 @@ class Attack(AbstractAttack):
             "088873165794135221"
         )
         key_data = RSA.construct((n, 65537)).publickey().exportKey()
-        self.timeout = 120
         for _ in range(5):
             result = self.attack(PublicKey(key_data), progress=False)
             if result != (None, None):

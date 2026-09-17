@@ -21,7 +21,7 @@ class Attack(AbstractAttack):
         many of these problems will be solved by the wiener attack module but perhaps some will fall through to here
         """
         try:
-            sageresult = int(
+            sageresult = (
                 subprocess.check_output(
                     [
                         "sage",
@@ -32,6 +32,8 @@ class Attack(AbstractAttack):
                     timeout=self.timeout,
                     stderr=subprocess.DEVNULL,
                 )
+                .decode("utf8")
+                .rstrip()
             )
         except (
             subprocess.CalledProcessError,
@@ -39,15 +41,26 @@ class Attack(AbstractAttack):
             ValueError,
         ):
             return (None, None)
-        if sageresult > 0:
+        # The script prints one candidate d per line (0 = failure); the
+        # first lattice root is not always the right one, so validate each
+        # candidate with RSA.construct until one is consistent.
+        for line in sageresult.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d_candidate = int(line)
+            except ValueError:
+                continue
+            if d_candidate <= 0:
+                continue
             try:
                 tmp_priv = RSA.construct(
-                    (int(publickey.n), int(publickey.e), sageresult)
+                    (int(publickey.n), int(publickey.e), d_candidate)
                 )
             except ValueError:
-                # The lattice script may print a positive but inconsistent
-                # candidate d; a failed construct is a miss, not a crash.
-                return (None, None)
+                # A positive but inconsistent candidate d; keep looking.
+                continue
             publickey.p = tmp_priv.p
             publickey.q = tmp_priv.q
             privatekey = PrivateKey(

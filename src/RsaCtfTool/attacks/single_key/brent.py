@@ -14,11 +14,6 @@ class Attack(AbstractAttack):
         """Run attack with Pollard Rho-brent"""
 
         try:
-            if not hasattr(publickey, "p"):
-                publickey.p = None
-            if not hasattr(publickey, "q"):
-                publickey.q = None
-
             # pollard Rho-brent attack
 
             poll_res = brent(publickey.n)

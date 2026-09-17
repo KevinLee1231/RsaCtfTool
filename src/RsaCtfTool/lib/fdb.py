@@ -1,4 +1,5 @@
 # reports factors to factordb
+import os
 import re
 import urllib3
 import logging
@@ -16,11 +17,19 @@ def send2fdb(composite, factors):
         "User-Agent": "Mozilla/5.0",
         "Connection": "keep-alive",
         "Content-Type": "application/x-www-form-urlencoded",
-        # Attribute reported factors to our FactorDB account.
-        "Cookie": "fdbuser=c777863e3e92987fd320986b5fb72e94",
+        # Attribute reported factors to a FactorDB account; override with
+        # the FDB_COOKIE env var to report under your own account.
+        "Cookie": os.environ.get(
+            "FDB_COOKIE", "fdbuser=c777863e3e92987fd320986b5fb72e94"
+        ),
     }
     response = http.request(
-        "POST", url, encode_multipart=False, headers=headers, fields=payload
+        "POST",
+        url,
+        encode_multipart=False,
+        headers=headers,
+        fields=payload,
+        timeout=30,
     )
     webpage = str(response.data.decode("utf-8"))
 

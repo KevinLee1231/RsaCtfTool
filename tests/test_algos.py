@@ -117,7 +117,8 @@ class TestHart:
         result = hart(n)
         assert result is not None
         f1, f2 = result
-        assert f1 * f2 == n or f1 * f2 == n
+        assert f1 * f2 == n
+        assert 1 < f1 < n and 1 < f2 < n
 
 
 class TestKraitchik:
@@ -481,7 +482,9 @@ class TestQuadraticSieveEdgeCases:
     def test_qs_qx_zero_in_sieve(self):
         base, smap = _build_qs_factor_base(25, 10)
         rels = _qs_sieve_interval(25, base, smap, 10, progress=False)
-        assert all(x * x - 25 != 0 or len(rels) >= 0 for x, _, _ in rels) or True
+        # A position with Q(x) == 0 would be a degenerate relation; the
+        # sieve must filter it out.
+        assert all(x * x - 25 != 0 for x, _, _ in rels)
 
 
 class TestDixonEdgeCases:

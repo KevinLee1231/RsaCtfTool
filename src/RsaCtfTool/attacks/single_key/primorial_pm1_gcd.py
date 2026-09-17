@@ -17,9 +17,11 @@ class Attack(AbstractAttack):
         prime = 1
         primorial = 1
         p = q = None
+        n = publickey.n
         for _ in tqdm(range(0, limit), disable=(not progress)):
             prime = next_prime(prime)
-            primorial *= prime
+            # Keep the primorial reduced mod n; the gcds below are unchanged.
+            primorial = (primorial * prime) % n
             primorial_p1 = [primorial - 1, primorial + 1]
             g0, g1 = (
                 gcd(primorial_p1[0], publickey.n),
