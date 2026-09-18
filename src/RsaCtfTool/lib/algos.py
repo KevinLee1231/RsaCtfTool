@@ -33,6 +33,7 @@ from RsaCtfTool.lib.number_theory import (
     mlucas,
     iroot,
     mulmod,
+    gmpy_version,
 )
 from RsaCtfTool.lib.number_theory import invmod, introot, is_prime, legendre, tonelli
 
@@ -41,40 +42,50 @@ sys.setrecursionlimit(100000)
 
 def brent(N):
     """Pollard rho with brent optimizations taken from: https://gist.github.com/ssanin82/18582bf4a1849dfb8afd"""
+    if N < 2:
+        return None
     if N & 1 == 0:
         return 2
     if is_prime(N):
         return N
-    g = N
-    while g == N:
-        y, c, m = randint(1, N - 1), randint(1, N - 1), randint(1, N - 1)
-        g, r, q = 1, 1, 1
+    while True:
+        y = randint(1, N - 1)
+        c = randint(1, N - 1)
+        m = randint(1, N - 1)
+
+        g = 1
+        r = 1
+        q = 1
+        ys = y
+
         while g == 1:
             x = y
-            i = 0
-            while i < r:
+            for _ in range(r):
                 y = (powmod(y, 2, N) + c) % N
-                i += 1
             k = 0
+
             while k < r and g == 1:
                 ys = y
-                i = 0
-                while i < min(m, r - k):
+                q = 1
+
+                for _ in range(min(m, r - k)):
                     y = (powmod(y, 2, N) + c) % N
-                    q = q * (abs(x - y)) % N
-                    i += 1
-                g, k = gcd(q, N), k + m
-                if N > g > 1:
-                    return g
+                    q = q * abs(x - y) % N
+
+                g = gcd(q, N)
+                k += m
             r <<= 1
+
         if g == N:
-            while True:
+            g = 1
+
+            while g == 1:
                 ys = (powmod(ys, 2, N) + c) % N
                 g = gcd(abs(x - ys), N)
-                if g > 1:
-                    break
-            if N > g > 1:
-                return g
+
+            if g == N:
+                continue
+        return g
 
 
 def strong_pseudoprime(N):
@@ -439,6 +450,9 @@ def quadratic_sieve(n, B=None, M=None, progress=True, n_extra=10, max_retries=6)
     Sieves Q(x) = x^2 - n for B-smooth values, then reuses the same
     GF(2) linear algebra and dependency-checking as Dixon.
     """
+    if n < 2:
+        return None
+
     if n & 1 == 0:
         return 2, n // 2
     if is_prime(n):
@@ -446,6 +460,9 @@ def quadratic_sieve(n, B=None, M=None, progress=True, n_extra=10, max_retries=6)
     if is_square(n):
         r = isqrt(n)
         return r, r
+
+    if gmpy_version > 0 and is_prime(n):
+        return None
 
     if B is None:
         ln_n = log(n)

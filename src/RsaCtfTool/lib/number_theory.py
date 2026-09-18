@@ -650,34 +650,33 @@ def rational_to_contfrac(x, y):
 
 def contfrac_to_rational(frac):
     """Contfrac_to_rational implementation"""
-    if len(frac) == 0:
+    if not frac:
         return (0, 1)
-    elif len(frac) == 1:
-        return (frac[0], 1)
-    else:
-        remainder = frac[1:]
-        (num, denom) = contfrac_to_rational(remainder)
-        return (frac[0] * num + denom, num)
+
+    num, denom = frac[-1], 1
+
+    for value in reversed(frac[:-1]):
+        num, denom = value * num + denom, num
+
+    return num, denom
 
 
 def convergents_from_contfrac(frac, progress=False):
-    """Convergents of a continued fraction.
+    """Convergents_from_contfrac implementation"""
+    if not frac:
+        return []
 
-    Single forward recurrence (O(k)) instead of recomputing every prefix
-    independently (O(k^2)); the output is unchanged: convergents of the
-    prefixes of length 0..len(frac)-1.
-    """
-    convs = [(0, 1)]
-    n1, n0 = 1, 0  # p(-1), p(-2)
-    d1, d0 = 0, 1  # q(-1), q(-2)
-    for a in frac[:-1]:
-        n2 = a * n1 + n0
-        d2 = a * d1 + d0
-        n1, n0 = n2, n1
-        d1, d0 = d2, d1
-        convs.append((n2, d2))
-    return convs if frac else []
+    convergents = [(0, 1)]
 
+    num_prev, num = 0, 1
+    denom_prev, denom = 1, 0
+
+    for value in frac[:-1]:
+        num_prev, num = num, value * num + num_prev
+        denom_prev, denom = denom, value * denom + denom_prev
+        convergents.append((num, denom))
+
+    return convergents
 
 def inv_mod_pow_of_2(factor, bit_count):
     """
@@ -788,4 +787,5 @@ __all__ = [
     "powmod_exp_list",
     "is_pow2",
     "is_lucas",
+    "gmpy_version",
 ]

@@ -287,21 +287,37 @@ class TestContfracToRational:
         num, denom = contfrac_to_rational([])
         assert num == 0 and denom == 1
 
+    def test_contfrac_to_rational_multiple_terms(self):
+        assert contfrac_to_rational([3, 7, 16]) == (355, 113)
+
     def test_contfrac_roundtrip(self):
-        original = 22, 7
-        cf = rational_to_contfrac(*original)
-        result = contfrac_to_rational(cf)
-        assert result == original
+        for original in [(22, 7), (13, 11), (355, 113), (12345, 6789)]:
+            cf = rational_to_contfrac(*original)
+            num, denom = contfrac_to_rational(cf)
+            assert num * original[1] == denom * original[0]
 
 
 class TestConvergents:
     """Tests for convergents_from_contfrac function."""
 
     def test_convergents_basic(self):
-        conv = convergents_from_contfrac([3, 7])
-        conv_list = list(conv)
-        assert (3, 1) in conv_list
-        assert (0, 1) in conv_list
+        assert convergents_from_contfrac([3, 7]) == [
+            (0, 1),
+            (3, 1),
+        ]
+
+    def test_convergents_multiple_terms(self):
+        assert convergents_from_contfrac([3, 7, 16]) == [
+            (0, 1),
+            (3, 1),
+            (22, 7),
+        ]
+
+    def test_convergents_empty(self):
+        assert convergents_from_contfrac([]) == []
+
+    def test_convergents_single_term(self):
+        assert convergents_from_contfrac([5]) == [(0, 1)]
 
 
 class TestLegendre:

@@ -18,7 +18,7 @@ class Attack(AbstractAttack):
         if not isinstance(publickeys, list):
             return None, None
 
-        if cipher is None or len(cipher) == 0:
+        if cipher is None or len(cipher) != len(publickeys):
             return None, None
         if len(cipher) < len(publickeys):
             return None, None

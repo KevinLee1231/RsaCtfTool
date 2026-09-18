@@ -36,6 +36,8 @@ from RsaCtfTool.lib.algos import (
 )
 from RsaCtfTool.lib.exceptions import FactorizationError
 
+from tests.fixtures.rsa_data import TEST_SMALL_D_RSA
+from RsaCtfTool.lib.keys_wrapper import PublicKey
 
 class TestFermat:
     """Tests for fermat factorization."""
@@ -78,6 +80,48 @@ class TestBrent:
     def test_brent_power_of_2(self):
         result = brent(16)
         assert result == 2
+
+    def test_brent_retries_after_g_equals_n(self, monkeypatch):
+        import RsaCtfTool.lib.algos as algos
+
+        n = 15
+        params = iter([
+            1, 1, 1,  # First attempt.
+            2, 1, 1,  # Retry.
+        ])
+
+        monkeypatch.setattr(
+            algos,
+            "randint",
+            lambda _a, _b: next(params),
+        )
+
+        result = algos.brent(n)
+
+        assert result in (3, 5)
+        assert n % result == 0
+
+    def test_brent_uses_fresh_params_after_g_equals_n(self, monkeypatch):
+        import RsaCtfTool.lib.algos as algos
+
+        n = 15
+        params = iter([
+            1, 1, 1,  # First attempt.
+            2, 1, 1,  # Retry.
+        ])
+        calls = []
+
+        def fake_randint(a, b):
+            calls.append((a, b))
+            return next(params)
+
+        monkeypatch.setattr(algos, "randint", fake_randint)
+
+        result = algos.brent(n)
+
+        assert result in (3, 5)
+        assert n % result == 0
+        assert len(calls) == 6
 
 
 class TestPollardRho:
@@ -139,6 +183,14 @@ class TestLehman:
         n = 6  # 6 % 4 == 2
         with pytest.raises(FactorizationError):
             lehman(n)
+
+    def test_lehman_basic(self):
+        n = 15
+
+        result = lehman(n)
+        assert result is not None
+        p, q = result
+        assert p * q == n
 
 
 class TestStrongPseudoprime:
@@ -206,18 +258,30 @@ class TestLehmerMachine:
         with pytest.raises(FactorizationError):
             lehmer_machine(n)
 
+    def test_lehmer_machine_basic(self):
+        p, q = 41, 43
+        n = p * q
+
+        result = lehmer_machine(n)
+
+        assert result is not None
+        f1, f2 = result
+        assert f1 * f2 == n
+        assert f1 > 1 and f2 > 1
+
 
 class TestFactor2PN:
     """Tests for factor_2PN factorization."""
 
     def test_factor_2pn_basic(self):
-        p, q = 41, 61
-        P = 3
+        p, q = 15, 77
+        P = 11
         n = p * q
         result = factor_2PN(n, P)
         assert result is not None
         f1, f2 = result
         assert f1 * f2 == n
+        assert f1 > 1 and f2 > 1
 
 
 class TestFactorXYXZ:
@@ -236,15 +300,28 @@ class TestFactorXYXZ:
 class TestWiener:
     """Tests for wiener attack."""
 
-    def test_wiener_small(self):
-        p, q = 1009, 1013
+    def test_wiener_small(self):  # example from WikiPedia
+        p, q = 239, 379
         n = p * q
-        d = 5
-        e = pow(d, -1, (p - 1) * (q - 1))
+        e = 17993
         result = wiener(n, e, progress=False)
         assert result is not None
         f1, f2 = result
         assert f1 * f2 == n
+
+    def test_wiener_small_d_regression(self):
+        for i in range(len(TEST_SMALL_D_RSA)):
+            e, n, c, m = TEST_SMALL_D_RSA[i]
+
+            result = wiener(n, e, progress=False)
+
+            assert result is not None
+            p, q = result
+            assert p * q == n
+
+            phi = (p - 1) * (q - 1)
+            d = pow(e, -1, phi)
+            assert pow(c, d, n) == m
 
 
 class TestPollardStrassen:
@@ -269,6 +346,15 @@ class TestWilliamsPP1:
         if result is not None:
             f1, f2 = result
             assert f1 * f2 == n
+
+    def test_williams_pp1_basic2(self):
+        n = 112729
+        result = williams_pp1(n)
+
+        assert result is not None
+        p, q = result
+        assert p * q == n
+        assert p > 1 and q > 1
 
 
 class TestDifferenceOfPowersFactor:
