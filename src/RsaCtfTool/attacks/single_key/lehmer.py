@@ -14,7 +14,10 @@ class Attack(AbstractAttack):
     def attack(self, publickey, cipher=[], progress=True):
         """Run lehmer_machine attack with a timeout"""
         try:
-            publickey.p, publickey.q = lehmer_machine(publickey.n)
+            r = lehmer_machine(publickey.n)
+            if r is None:
+                return None, None
+            publickey.p, publickey.q = r
         except FactorizationError:
             self.logger.error("N should not be a 4k+2 number...")
             return None, None

@@ -3,15 +3,16 @@
 
 import subprocess
 import os
-from RsaCtfTool.attacks.abstract_attack import AbstractAttack
+from RsaCtfTool.attacks.abstract_attack import AbstractAttack, SAGE_MIN_TIMEOUT
 from RsaCtfTool.lib.utils import rootpath, TimeoutError, terminate_proc_tree
 
 
 class Attack(AbstractAttack):
     def __init__(self, timeout=60, ecmdigits=25):
-        super().__init__(timeout)
+        super().__init__(max(timeout, SAGE_MIN_TIMEOUT))
         self.speed = AbstractAttack.speed_enum["slow"]
         self.required_binaries = ["sage"]
+        self.required_scripts = ["sage/ecm.sage"]
         self.ecmdigits = ecmdigits
 
     def attack(self, publickey, cipher=[], progress=True):
@@ -38,12 +39,23 @@ class Attack(AbstractAttack):
                 ]
 
             sage_proc = subprocess.Popen(
-                sage_find_factor_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                sage_find_factor_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                # Own session: os.getpgid(child) then names the child
+                # itself, so the timeout cleanup below cannot escalate to
+                # killing this tool's own process group.
+                start_new_session=True,
             )
             try:
                 sage_proc.wait(timeout=self.timeout)
                 stdout, stderr = sage_proc.communicate()
-                sageresult = int(stdout)
+                try:
+                    sageresult = int(stdout)
+                except ValueError:
+                    # sage died before printing a factor (empty or garbled
+                    # stdout); treat it as a miss instead of raising.
+                    return (None, None)
             except (
                 subprocess.CalledProcessError,
                 subprocess.TimeoutExpired,
@@ -52,7 +64,9 @@ class Attack(AbstractAttack):
                 terminate_proc_tree(os.getpgid(sage_proc.pid))
                 return (None, None)
 
-            if sageresult > 0:
+            # Accept only a genuine factor split: the script prints 0 on
+            # failure and may echo n itself for prime input.
+            if 1 < sageresult < publickey.n and publickey.n % sageresult == 0:
                 publickey.p = sageresult
                 publickey.q = publickey.n // publickey.p
                 return self.create_private_key_from_pqe(

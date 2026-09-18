@@ -1,9 +1,21 @@
 import sys
-from sage.all import inverse_mod, PolynomialRing, floor, Zmod
+import traceback
+from pathlib import Path
+from sage.all import Integer, inverse_mod, PolynomialRing, floor, Zmod
 
 
-def solve(M, n, a, m, XX, invmod_Mn, F, x, beta):
+script_path = Path(sys.argv[0]).resolve()
+if not (script_path.parent / "sage_functions.py").is_file():
+    script_path = Path(__file__).resolve()
+script_dir = str(script_path.parent)
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+
+
+def solve(M, n, a, m, XX, invmod_Mn, F, x, beta, sage_dir):
     # I need to import it in the function otherwise multiprocessing doesn't find it in its context
+    if sage_dir not in sys.path:
+        sys.path.insert(0, sage_dir)
     from sage_functions import coppersmith_howgrave_univariate
 
     base = 65537
@@ -53,8 +65,10 @@ def roca(n):
     order = Zmod(M_prime)(65537).multiplicative_order()
     inf = a3 >> 1
     sup = (a3 + order) >> 1
-    # Upper bound for the small root x0
-    XX = floor(2 * n**0.5 / M_prime)
+    # Upper bound for the small root x0. Integer sqrt: the previous
+    # float-based n**0.5 overflows for n >= 2**1024, silently failing
+    # every key in the 992-1952 bit ROCA tiers.
+    XX = floor(2 * Integer(n).sqrt() / M_prime)
     invmod_Mn = inverse_mod(M_prime, n)
     # Create the polynom f(x)
     F = PolynomialRing(Zmod(n), implementation="NTL", names=("x",))
@@ -65,7 +79,7 @@ def roca(n):
     for inf_a in range(inf, sup, chunk_size):
         # create an array with the parameter for the solve function
         inputs = [
-            ((M_prime, n, a, m, XX, invmod_Mn, F, x, beta), {})
+            ((M_prime, n, a, m, XX, invmod_Mn, F, x, beta, script_dir), {})
             for a in range(inf_a, inf_a + chunk_size)
         ]
         # the sage builtin multiprocessing stuff
@@ -81,7 +95,7 @@ def roca(n):
     return "Fail"
 
 
-if __name__ == "__main__":
+if __name__ in {"__main__", "sage.all"}:
     """
     # Test values
     p = 80688738291820833650844741016523373313635060001251156496219948915457811770063
@@ -95,4 +109,5 @@ if __name__ == "__main__":
     try:
         roca(n)
     except Exception:
+        traceback.print_exc(file=sys.stderr)
         print("FAIL")

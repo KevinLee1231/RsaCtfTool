@@ -16,7 +16,9 @@ class Attack(AbstractAttack):
         for c in cipher:
             commonfactor = gcd(publickey.n, s2n(c))
 
-            if commonfactor > 1:
+            # commonfactor == n means c == 0 (mod n): the "split" (1, n)
+            # is not a factorization and must not touch publickey.p/q.
+            if 1 < commonfactor < publickey.n:
                 publickey.q = commonfactor
                 publickey.p = publickey.n // publickey.q
                 priv_key = PrivateKey(

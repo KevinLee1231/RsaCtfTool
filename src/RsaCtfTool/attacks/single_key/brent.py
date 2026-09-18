@@ -14,18 +14,9 @@ class Attack(AbstractAttack):
         """Run attack with Pollard Rho-brent"""
 
         try:
-            if not hasattr(publickey, "p"):
-                publickey.p = None
-            if not hasattr(publickey, "q"):
-                publickey.q = None
-
             # pollard Rho-brent attack
 
-            try:
-                poll_res = brent(publickey.n)
-            except RecursionError:
-                print("RecursionError")
-                return None, None
+            poll_res = brent(publickey.n)
 
             if poll_res is not None:
                 publickey.p = poll_res
@@ -38,12 +29,9 @@ class Attack(AbstractAttack):
             return None, None
 
     def test(self):
+        from RsaCtfTool.lib.crypto_wrapper import RSA
         from RsaCtfTool.lib.keys_wrapper import PublicKey
 
-        key_data = """-----BEGIN PUBLIC KEY-----
-MDwwDQYJKoZIhvcNAQEBBQADKwAwKAIhAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAABAgMBAAE=
------END PUBLIC KEY-----"""
-        self.timeout = 180
+        key_data = RSA.construct((83 * 97, 17)).publickey().exportKey()
         result = self.attack(PublicKey(key_data), progress=False)
         return result != (None, None)

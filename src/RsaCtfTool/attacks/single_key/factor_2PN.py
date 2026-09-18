@@ -16,7 +16,7 @@ class Attack(AbstractAttack):
         try:
             for z in [3, 5, 7, 11, 13, 17]:
                 pq = factor_2PN(publickey.n, z)
-                if pq != []:
+                if pq is not None:
                     publickey.p, publickey.q = pq
                     break
 

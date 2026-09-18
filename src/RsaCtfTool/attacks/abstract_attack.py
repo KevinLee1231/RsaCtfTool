@@ -2,11 +2,22 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import os
 from pathlib import Path
 import sys
 from typing import List, Any, Optional, Tuple
 import shutil
-from RsaCtfTool.lib.utils import timeout
+from RsaCtfTool.lib.utils import timeout, TimeoutError
+
+# Package root (the directory containing the sage/ helper scripts),
+# used to resolve declared helper scripts.
+_ROOTPATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+# Sage-backed attacks pay interpreter startup plus lattice/ECM/QS runtimes
+# that the bare 60s CLI default cuts short; give them the same 180s budget
+# the heavier pure-Python attacks (dixon, quadratic_sieve, pollard_rho) use.
+# qicheng keeps its own higher floor (900s).
+SAGE_MIN_TIMEOUT = 180
 
 
 class AbstractAttack(object):
@@ -17,6 +28,9 @@ class AbstractAttack(object):
         self.speed = AbstractAttack.speed_enum["medium"]
         self.timeout = timeout
         self.required_binaries = []
+        # Helper scripts (relative to the repository root) that must exist
+        # for the attack to run; e.g. "sage/boneh_durfee.sage".
+        self.required_scripts = []
 
     def get_name(self) -> str:
         """Return attack name"""
@@ -29,6 +43,14 @@ class AbstractAttack(object):
             if shutil.which(required_binary) is None:
                 self.logger.warning(
                     f"Can't load {self.get_name()} because {required_binary} binary is not installed"
+                )
+                return False
+        for required_script in self.required_scripts:
+            script_path = os.path.join(_ROOTPATH, required_script)
+            if not os.path.isfile(script_path):
+                self.logger.warning(
+                    f"Can't load {self.get_name()} because helper script "
+                    f"{required_script} is missing"
                 )
                 return False
         return True
@@ -55,6 +77,9 @@ class AbstractAttack(object):
             try:
                 return self.attack(publickeys, cipher, progress)
             except TimeoutError:
+                self.logger.warning(
+                    f"[!] Timeout during {self.get_name()} attack."
+                )
                 return None, None
 
     def test(self) -> None:
@@ -80,6 +105,10 @@ class AbstractAttack(object):
                     q=int(publickey.q),
                     e=int(publickey.e),
                 )
+                if priv_key.key is None:
+                    # RSA.construct failed inside PrivateKey; the factors
+                    # are not a valid split of n - do not hand back a key.
+                    return None, None
                 return priv_key, None
             except ValueError:
                 return None, None
@@ -104,13 +133,9 @@ class AbstractAttack(object):
         if p is not None and q is not None:
             try:
                 priv_key = PrivateKey(p=int(p), q=int(q), e=int(e), n=int(n))
+                if priv_key.key is None:
+                    return None, None
                 return priv_key, None
             except (ValueError, TypeError):
                 return None, None
         return None, None
-
-
-# Configure logger
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)

@@ -3,6 +3,12 @@
 # by lwc
 # source: https://raw.githubusercontent.com/lwcM/RSA_attack/master/partial_key_exposure_attack.py
 # 2016/09/22
+#
+# Local fix: the original Coppersmith search bound X = 2^(nbits/2 - L) assumed
+# the target factor has exactly half the bits of n. For a factor longer than
+# that (or a leak slightly under the ideal size) the true root fell outside X
+# and small_roots silently returned nothing. The bound is now swept over the
+# plausible range; each call is cheap and lattice dimension does not depend on X.
 
 import sys
 
@@ -14,8 +20,28 @@ def find_p_Coppersmith(n, pLow, lowerBitsNum, beta=0.5):
     l = 1 << lowerBitsNum
     f = l * x + pLow
     f = f.monic()
-    if (roots = f.small_roots(X = 1 << ((nbits >> 1) - lowerBitsNum), beta=beta)):
-        return [int(r) for r in [ ZZ(gcd(l * x0 + pLow, n)) for x0 in roots ] if n > r > 1]
+
+    # Unknown high bits of the target factor range from (nbits//2 - L) when
+    # the factor barely exceeds sqrt(n) up to (nbits - L) for a very
+    # unbalanced factor. Sweep increasing bounds; Coppersmith's provable
+    # window caps useful bounds at ~n^(beta^2 - epsilon) ~ 19% of nbits.
+    lo = max((nbits >> 1) - lowerBitsNum, 4)
+    hi = min(nbits - lowerBitsNum, (nbits * 19) // 100)
+    if hi < lo:
+        hi = lo
+    bounds = list(range(lo, hi + 1, 8))
+    if not bounds or bounds[-1] != hi:
+        bounds.append(hi)
+
+    for ubits in bounds:
+        roots = f.small_roots(X=1 << ubits, beta=beta)
+        if roots:
+            return [
+                int(r)
+                for r in [ZZ(gcd(l * x0 + pLow, n)) for x0 in roots]
+                if n > r > 1
+            ]
+    return None
 
 
 def hensel_lift(a, b, c, bits):
@@ -53,7 +79,8 @@ def find_p(n, e, dLow, beta=0.5):
 
         for pLow in hensel_lift(a, b, c, lowerBitsNum):
             pLow = ZZ(pLow)
-            if (roots := find_p_Coppersmith(n, pLow, lowerBitsNum, beta)):
+            roots = find_p_Coppersmith(n, pLow, lowerBitsNum, beta)
+            if roots:
                 return roots[0]
 
 
@@ -63,10 +90,7 @@ def partial_d(n, e, dLow, beta=0.5):
     return p, n // p
 
 
-# n = 123541066875660402939610015253549618669091153006444623444081648798612931426804474097249983622908131771026653322601466480170685973651622700515979315988600405563682920330486664845273165214922371767569956347920192959023447480720231820595590003596802409832935911909527048717061219934819426128006895966231433690709
-# e = 97
 beta = 0.5
-# dLow = 48553333005218622988737502487331247543207235050962932759743329631099614121360173210513133
 
 n = int(sys.argv[1])
 e = int(sys.argv[2])

@@ -14,18 +14,20 @@ class Attack(AbstractAttack):
     def attack(self, publickey, cipher=[], progress=True):
         """Run tests against mersenne composites"""
         p = q = None
-        for i in tqdm(range(2, ilog2(publickey.n)), disable=(not progress)):
-            i2 = 1 << i
+        n = publickey.n
+        i2 = 4  # 2^2; doubled each round, kept reduced mod n (gcds unchanged)
+        for i in tqdm(range(2, ilog2(n)), disable=(not progress)):
             mersenne = [i2 - 1, i2 + 1]
-            g0, g1 = gcd(mersenne[0], publickey.n), gcd(mersenne[1], publickey.n)
-            if 1 < g0 < publickey.n:
-                p = publickey.n // g0
+            g0, g1 = gcd(mersenne[0], n), gcd(mersenne[1], n)
+            if 1 < g0 < n:
+                p = n // g0
                 q = g0
                 break
-            if 1 < g1 < publickey.n:
-                p = publickey.n // g1
+            if 1 < g1 < n:
+                p = n // g1
                 q = g1
                 break
+            i2 = (i2 << 1) % n
         return self.create_private_key_from_pqe(p, q, publickey.e, publickey.n)
 
     def test(self):

@@ -23,7 +23,6 @@ from RsaCtfTool.lib.algos import (
     pollard_strassen,
     williams_pp1,
     difference_of_powers_factor,
-    repunit_factor,
     FactorHighAndLowBitsEqual,
     Fibonacci,
     dixon,
@@ -162,7 +161,8 @@ class TestHart:
         result = hart(n)
         assert result is not None
         f1, f2 = result
-        assert f1 * f2 == n or f1 * f2 == n
+        assert f1 * f2 == n
+        assert 1 < f1 < n and 1 < f2 < n
 
 
 class TestKraitchik:
@@ -204,9 +204,12 @@ class TestStrongPseudoprime:
         f1, f2 = result
         assert f1 * f2 == n
 
-    def test_strong_pseudoprime_returns_empty(self):
+    def test_strong_pseudoprime_fifteen(self):
+        # 15 only offers nontrivial roots with gcd(prev-1, N) larger than
+        # gcd(prev+1, N); either orientation must be accepted.
         result = strong_pseudoprime(15)
-        assert result == []
+        assert result is not None
+        assert result[0] * result[1] == 15
 
     def test_strong_pseudoprime_carmichael_example(self):
         """Factor the Carmichael number from Wagstaff Example 10.5."""
@@ -362,18 +365,6 @@ class TestDifferenceOfPowersFactor:
         n = p * q
         result = difference_of_powers_factor(n)
         assert isinstance(result, list)
-
-
-class TestRepunitFactor:
-    """Tests for repunit_factor."""
-
-    def test_repunit_basic(self):
-        p, q = 31, 37
-        n = p * q
-        result = repunit_factor(n)
-        if result is not None:
-            f1, f2 = result
-            assert f1 * f2 == n
 
 
 class TestFactorHighAndLowBitsEqual:
@@ -577,7 +568,9 @@ class TestQuadraticSieveEdgeCases:
     def test_qs_qx_zero_in_sieve(self):
         base, smap = _build_qs_factor_base(25, 10)
         rels = _qs_sieve_interval(25, base, smap, 10, progress=False)
-        assert all(x * x - 25 != 0 or len(rels) >= 0 for x, _, _ in rels) or True
+        # A position with Q(x) == 0 would be a degenerate relation; the
+        # sieve must filter it out.
+        assert all(x * x - 25 != 0 for x, _, _ in rels)
 
 
 class TestDixonEdgeCases:

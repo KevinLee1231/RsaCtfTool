@@ -26,10 +26,9 @@ class Attack(AbstractAttack):
         return self.create_private_key(publickey)
 
     def test(self):
+        from RsaCtfTool.lib.crypto_wrapper import RSA
         from RsaCtfTool.lib.keys_wrapper import PublicKey
 
-        key_data = """-----BEGIN PUBLIC KEY-----
-MCAwDQYJKoZIhvcNAQEBBQADDwAwDAIFAQAwAjcCAwEAAQ==
------END PUBLIC KEY-----"""
+        key_data = RSA.construct((3 * 5, 7)).publickey().exportKey()
         result = self.attack(PublicKey(key_data), progress=False)
         return result != (None, None)

@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import logging
-import tempfile
 import binascii
 import subprocess
 from cryptography.hazmat.primitives import serialization
@@ -22,30 +21,47 @@ def load_partial_privkey(keyfile):
     version, modulus(n), exponent(e), d, prime(p), prime(q), dp, dq, qi = tmp
     """
     keycmd = ["openssl", "asn1parse", "-in", keyfile]
+    try:
+        lines = subprocess.check_output(keycmd).decode("utf8").splitlines()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError(f"cannot asn1-parse private key {keyfile}: {exc}")
     fields = []
     i = 0
-    for line in subprocess.check_output(keycmd).decode("utf8").splitlines():
+    for line in lines:
         if "hl=2 l=   0 prim: " not in line:
-            if i > 0:
-                val = 0
-                if "INTEGER" in line:
-                    if "BAD INTEGER" in line:
-                        val = int(
-                            line.split(":")[4].replace("[", "").replace("]", ""), 16
-                        )
-                    else:
-                        val = int(line.split(":")[3], 16)
+            if i > 0 and "INTEGER" in line:
+                # Non-INTEGER lines (OCTET STRING headers etc.) carry no key
+                # field; padding them with 0 used to shift every later field.
+                if "BAD INTEGER" in line:
+                    val = int(
+                        line.split(":")[4].replace("[", "").replace("]", ""), 16
+                    )
+                else:
+                    val = int(line.split(":")[3], 16)
                 fields.append(val)
             i += 1
+    if len(fields) < 9:
+        raise ValueError(
+            f"private key {keyfile} yielded only {len(fields)} fields, expected 9"
+        )
     return fields
 
 
 def generate_pq_from_n_and_p_or_q(n, p=None, q=None):
-    """Return p and q from (n, p) or (n, q)"""
+    """Return (p, q) from (n, p) or (n, q).
+
+    Raises ValueError when neither prime is supplied, or when the supplied
+    prime does not divide n - callers previously received a silently
+    wrong floor-division quotient in that case.
+    """
+    if p is None and q is None:
+        raise ValueError("at least one prime factor must be provided")
     if p is None:
         p = n // q
     elif q is None:
         q = n // p
+    if p * q != n:
+        raise ValueError("the supplied prime does not divide n")
     return (p, q)
 
 
@@ -78,10 +94,14 @@ class PublicKey(object):
         self.filename = filename
         self.n = pub.n
         self.e = pub.e
+        self.p = None
+        self.q = None
         self.key = key
 
     def __str__(self):
         """Print armored public key"""
+        if isinstance(self.key, bytes):
+            return self.key.decode("utf-8")
         return self.key
 
 
@@ -105,9 +125,13 @@ class PrivateKey(object):
         if self.d is not None:
             return
         if self.phi is not None and self.e is not None:
+            # The phi-inverse also satisfies e*d == 1 (mod lambda) since
+            # lambda divides phi, and RSA.construct validates against phi.
+            # gmpy2 raises ZeroDivisionError (not ValueError) when no
+            # inverse exists.
             try:
                 self.d = int(invert(e, self.phi))
-            except ValueError:
+            except (ValueError, ZeroDivisionError):
                 logger.error("[!] e^d==1 inversion error, check your math.")
 
     def _construct_key_from_components(self):
@@ -132,26 +156,42 @@ class PrivateKey(object):
         return False
 
     def _load_key_from_file(self, filename, password, p, q, d):
+        if isinstance(password, str):
+            password = password.encode()
         with open(filename, "rb") as key_data_fd:
+            pem_bytes = key_data_fd.read()
             try:
-                self.key = serialization.load_pem_private_key(
-                    key_data_fd.read(), password=password, backend=default_backend()
+                loaded = serialization.load_pem_private_key(
+                    pem_bytes, password=password, backend=default_backend()
                 )
-                private_numbers = self.key.private_numbers()
+                private_numbers = loaded.private_numbers()
                 loadok = True
             except Exception:
                 loadok = False
 
             if loadok:
+                public_numbers = private_numbers.public_numbers
                 if p is None:
                     self.p = private_numbers.p
                 if q is None:
                     self.q = private_numbers.q
                 if d is None:
                     self.d = private_numbers.d
-                if self.p and self.q:
-                    self.n = self.p * self.q
+                if self.e is None:
+                    self.e = public_numbers.e
+                if self.n is None:
+                    self.n = public_numbers.n
+                self.filename = filename
                 self._compute_phi()
+                # Rebuild a PyCryptodome key from the recovered components so
+                # __str__/decrypt see the same uniform RSA object interface
+                # instead of a cryptography-library key without exportKey().
+                try:
+                    self.key = RSA.construct(
+                        (self.n, self.e, self.d, self.p, self.q)
+                    )
+                except (ValueError, IndexError, NotImplementedError, TypeError):
+                    self._pem_bytes = pem_bytes
             else:
                 tmp = load_partial_privkey(filename)
                 self.n = tmp[1]
@@ -182,6 +222,8 @@ class PrivateKey(object):
         :param n: n from public key
         """
         self.key = None
+        self._pem_bytes = None
+        self.filename = filename
         self._init_fields(p, q, e, n, d, phi)
         self._compute_phi()
         self._compute_d(e)
@@ -204,83 +246,53 @@ class PrivateKey(object):
         if not isinstance(cipher, list):
             cipher = [cipher]
 
+        # Build the OAEP decryptor once instead of re-importing per cipher;
+        # stays None when no constructable key exists.
+        rsakey = None
+        pem = str(self)
+        if pem:
+            try:
+                rsakey = PKCS1_OAEP.new(RSA.importKey(pem))
+            except Exception:
+                rsakey = None
+
         plain = []
         for c in cipher:
+            # PKCS#1 OAEP first: it validates its own padding and fails
+            # cleanly on anything else.
+            if rsakey is not None:
+                try:
+                    plain.append(rsakey.decrypt(c))
+                    continue
+                except Exception:
+                    pass
+
+            # Textbook RSA with the recovered exponent.
             if self.n is not None and self.d is not None:
                 try:
                     cipher_int = int.from_bytes(c, "big")
                     m_hex = hex(powmod(cipher_int, self.d, self.n))[2:]
                     if len(m_hex) % 2 == 1:
                         m_hex = f"0{m_hex}"
-                    m = binascii.unhexlify(m_hex)
-                    plain.append(m)
+                    plain.append(binascii.unhexlify(m_hex))
+                    continue
                 except Exception:
                     pass
 
-            try:
-                rsakey = RSA.importKey(str(self))
-                rsakey = PKCS1_OAEP.new(rsakey)
-                plain.append(rsakey.decrypt(c))
-            except Exception:
-                pass
-
-            try:
-                tmp_priv_key = tempfile.NamedTemporaryFile()
-                with open(tmp_priv_key.name, "wb") as tmpfd:
-                    tmpfd.write(str(self).encode("utf8"))
-                tmp_priv_key_name = tmp_priv_key.name
-
-                tmp_cipher = tempfile.NamedTemporaryFile()
-                with open(tmp_cipher.name, "wb") as tmpfd:
-                    tmpfd.write(c)
-                tmp_cipher_name = tmp_cipher.name
-
-                with open("/dev/null") as DN:
-                    try:
-                        openssl_result = subprocess.check_output(
-                            [
-                                "openssl",
-                                "rsautl",
-                                "-raw",
-                                "-decrypt",
-                                "-in",
-                                "-oaep",
-                                tmp_cipher_name,
-                                "-inkey",
-                                tmp_priv_key_name,
-                            ],
-                            stderr=DN,
-                            timeout=30,
-                        )
-                        plain.append(openssl_result)
-                    except Exception:
-                        pass
-
-                    try:
-                        openssl_result = subprocess.check_output(
-                            [
-                                "openssl",
-                                "rsautl",
-                                "-raw",
-                                "-decrypt",
-                                "-in",
-                                tmp_cipher_name,
-                                "-inkey",
-                                tmp_priv_key_name,
-                            ],
-                            stderr=DN,
-                            timeout=30,
-                        )
-                        plain.append(openssl_result)
-                    except Exception:
-                        pass
-            except Exception:
-                plain.append(cipher)
+            # Nothing worked - keep the raw ciphertext so the caller sees
+            # an entry for this input instead of a silently dropped one.
+            plain.append(c)
         return plain
 
     def __str__(self):
-        # print(type(self.key))
         """Print armored private key"""
         if self.key is not None:
-            return self.key.exportKey().decode("utf-8")
+            export = getattr(self.key, "exportKey", None) or getattr(
+                self.key, "export_key", None
+            )
+            if export is not None:
+                out = export()
+                return out.decode("utf-8") if isinstance(out, bytes) else out
+        if self._pem_bytes is not None:
+            return self._pem_bytes.decode("utf-8")
         return ""

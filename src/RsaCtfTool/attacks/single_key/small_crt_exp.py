@@ -2,16 +2,17 @@
 # -*- coding: utf-8 -*-
 
 import subprocess
-from RsaCtfTool.attacks.abstract_attack import AbstractAttack
+from RsaCtfTool.attacks.abstract_attack import AbstractAttack, SAGE_MIN_TIMEOUT
 from RsaCtfTool.lib.keys_wrapper import PrivateKey
 from RsaCtfTool.lib.utils import rootpath
 
 
 class Attack(AbstractAttack):
     def __init__(self, timeout=60):
-        super().__init__(timeout)
+        super().__init__(max(timeout, SAGE_MIN_TIMEOUT))
         self.speed = AbstractAttack.speed_enum["medium"]
         self.required_binaries = ["sage"]
+        self.required_scripts = ["sage/small_crt_exp.sage"]
 
     def attack(self, publickey, cipher=[], progress=True):
         """Factor n if mininum of crt exponent is small enough"""
@@ -29,9 +30,13 @@ class Attack(AbstractAttack):
                     stderr=subprocess.DEVNULL,
                 )
             )
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            ValueError,
+        ):
             return (None, None)
-        if p > 0:
+        if 1 < p < publickey.n and publickey.n % p == 0:
             q = publickey.n // p
             privatekey = PrivateKey(
                 p=p,

@@ -45,5 +45,7 @@ def factor_int(n, verbose=False):
             factors.append(sage_eval(term, {'x': 2}))
     return factors
 
-    if __name__ == "__main__":
-        print(factor_int(Integer(sys.argv[1])))
+
+# Sage executes .sage files with __name__ set to "sage.all", so a regular
+# __main__ guard never runs when this script is launched by the sage command.
+print(factor_int(Integer(sys.argv[1])))

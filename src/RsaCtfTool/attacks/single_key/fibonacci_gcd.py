@@ -12,7 +12,7 @@ class Attack(AbstractAttack):
         self.speed = AbstractAttack.speed_enum["fast"]
 
     def attack(self, publickey, cipher=[], progress=True):
-        """Run tests against fermat composites"""
+        """Run tests against Fibonacci composites"""
         limit = 10000
         p = q = None
         for x in tqdm(range(1, limit), disable=(not progress)):

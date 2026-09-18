@@ -34,13 +34,15 @@ class SiqsAttack(object):
         yafurun = subprocess.check_output(
             [
                 "yafu",
-                f"siqs({str(self.n)})",
                 "-siqsT",
                 str(self.timeout),
                 "-threads",
                 str(self.threads),
             ],
-            timeout=self.timeout,
+            input=f"siqs({self.n})\n".encode(),
+            # yafu's own -siqsT budget is self.timeout; give the process a
+            # grace period on top so it can print results before we kill it.
+            timeout=self.timeout + 30,
             stderr=subprocess.DEVNULL,
         )
 
@@ -76,12 +78,24 @@ class Attack(AbstractAttack):
 
     def attack(self, publickey, cipher=[], progress=True):
         """Try to factorize using yafu"""
-        if publickey.n.bit_length() > 1024:
+        # SIQS becomes impractical well below 1024 bits; ~512 bits (155
+        # digits) is the realistic ceiling, and yafu rejects larger inputs
+        # with "input too big for SIQS" anyway.
+        if publickey.n.bit_length() > 512:
             self.logger.error("[!] Warning: Modulus too large for SIQS attack module")
             return None, None
 
         siqsobj = SiqsAttack(publickey.n, self.timeout)
-        siqsobj.doattack()
+        try:
+            siqsobj.doattack()
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            OSError,
+        ):
+            # yafu crashed, hit the timeout, or vanished from PATH after the
+            # can_run preflight - all of these are a plain miss.
+            return None, None
 
         if siqsobj.p and siqsobj.q:
             publickey.q = siqsobj.q

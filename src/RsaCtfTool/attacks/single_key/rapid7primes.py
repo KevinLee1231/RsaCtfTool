@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import glob
+from pathlib import Path
 from tqdm import tqdm
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack
 from RsaCtfTool.lib.keys_wrapper import PrivateKey
@@ -16,7 +16,8 @@ class Attack(AbstractAttack):
 
     def attack(self, publickey, cipher=[], progress=True):
         """Search for rapid7 gcd primes"""
-        for txtfile in glob.glob("data/*.pkl.bz2"):
+        data_dir = Path(__file__).resolve().parents[2] / "data"
+        for txtfile in data_dir.glob("*.pkl.bz2"):
             self.logger.info(f"[+] loading prime list file {txtfile}...")
             # primes = sorted([int(l.rstrip()) for l in open(txtfile,"r").readlines()])
             primes = decompress_pickle(txtfile)

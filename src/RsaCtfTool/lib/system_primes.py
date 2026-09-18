@@ -1,3 +1,6 @@
+import functools
+
+
 primes_txt = []
 notprimes_txt = []
 primes_int = []
@@ -1297,6 +1300,13 @@ a0e03b4dae2af5b0c8ebbb3c83539961
 
 
 def load_system_consts():
+    """Prime constants (and their neighbours) from system crypto suites.
+
+    The parse is deterministic over module-level data, so cache it: the
+    system_primes_gcd attack re-ran the whole hex parse/sort chain for
+    every public key in a multi-key run.
+    """
+
     def addpm1(n):
         return [n - 1, n, n + 1] if n > 2 else [n, n + 1]
 
@@ -1317,3 +1327,6 @@ def load_system_consts():
     primes_tmp1 = sorted(set(primes_tmp1))
     ALL = sorted(set(primes_tmp0 + notprimes_tmp0 + primes_int + primes_tmp1))
     return sorted(set(sum(map(addpm1, ALL), [])))
+
+
+load_system_consts = functools.lru_cache(maxsize=1)(load_system_consts)

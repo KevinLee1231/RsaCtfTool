@@ -13,11 +13,6 @@ class Attack(AbstractAttack):
     def attack(self, publickey, cipher=[], progress=True):
         """Run Dixon's smooth-number factorisation attack"""
         try:
-            if not hasattr(publickey, "p"):
-                publickey.p = None
-            if not hasattr(publickey, "q"):
-                publickey.q = None
-
             poll_res = dixon(publickey.n, progress=progress)
 
             if poll_res is not None:

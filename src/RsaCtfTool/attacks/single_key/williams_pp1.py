@@ -11,22 +11,21 @@ class Attack(AbstractAttack):
         self.speed = AbstractAttack.speed_enum["slow"]
 
     def attack(self, publickey, cipher=[], progress=True):
-        """Run attack with Pollard Rho-brent"""
+        """Run attack with Williams' p+1 method"""
 
         try:
-            if not hasattr(publickey, "p"):
-                publickey.p = None
-            if not hasattr(publickey, "q"):
-                publickey.q = None
-
             # williams p+1 attack
 
             wres = williams_pp1(publickey.n)
 
             if wres is not None:
-                publickey.p = wres
-                publickey.q = publickey.n // publickey.p
-                print(publickey.p, publickey.q)
+                p, q = int(wres[0]), int(wres[1])
+                if 1 < p < publickey.n and p * q == publickey.n:
+                    publickey.p = p
+                    publickey.q = q
+                    self.logger.info(
+                        f"[+] Williams p+1 found factors: {publickey.p}, {publickey.q}"
+                    )
 
             return self.create_private_key_from_pqe(
                 publickey.p, publickey.q, publickey.e, publickey.n
@@ -35,5 +34,11 @@ class Attack(AbstractAttack):
             return None, None
 
     def test(self):
-        self.timeout = 180
-        return None, None
+        from RsaCtfTool.lib.crypto_wrapper import RSA
+        from RsaCtfTool.lib.keys_wrapper import PublicKey
+
+        # p+1 and q+1 both smooth: the method's designed sweet spot.
+        p, q = 601, 401
+        key_data = RSA.construct((p * q, 65537)).publickey().exportKey()
+        result = self.attack(PublicKey(key_data), progress=False)
+        return result != (None, None)

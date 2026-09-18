@@ -3,7 +3,7 @@
 
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack
 from RsaCtfTool.lib.keys_wrapper import PrivateKey
-from RsaCtfTool.lib.number_theory import is_prime, invmod, ilog2, iroot, powmod
+from RsaCtfTool.lib.number_theory import gcd, is_prime, invmod, ilog2, iroot, powmod
 
 
 class Attack(AbstractAttack):
@@ -18,6 +18,10 @@ class Attack(AbstractAttack):
 
         if is_prime(n):
             phi = n - 1
+            if gcd(e, phi) != 1:
+                # invmod has no result here (gmpy2 returns 0, the pure
+                # python backend raises ZeroDivisionError); it is a miss.
+                return (None, None)
             d = invmod(e, phi)
             priv_key = PrivateKey(n=n, e=e, d=d)
             return (priv_key, None)
@@ -35,6 +39,9 @@ class Attack(AbstractAttack):
                     return (None, None)
                 else:
                     phi = (root - 1) * powmod(root, i - 1, n)
+                    if gcd(e, phi) != 1:
+                        # Same non-invertible case as above.
+                        return (None, None)
                     d = invmod(e, phi)
                     # self.logger.info("d = %d" % d)
                     self.logger.warning(

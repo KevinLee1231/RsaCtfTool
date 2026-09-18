@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from functools import reduce, cache
+from functools import reduce
 import math
 import logging
 import random
@@ -60,16 +60,16 @@ def A000265(n):
     return n // (A135481(n) + 1)
 
 
-@cache
 def mulmod(a, b, m):
-    if b == 0:
-        return 0
-    if b == 1:
-        return a % m
-    if b & 1 == 0:
-        return mulmod((a << 1) % m, b >> 1, m)
-    else:
-        return (a + mulmod(a, b - 1, m)) % m
+    """Russian-peasant modular multiplication, O(log b), no recursion."""
+    a %= m
+    result = 0
+    while b:
+        if b & 1:
+            result = (result + a) % m
+        a = (a << 1) % m
+        b >>= 1
+    return result
 
 
 def getpubkeysz(n):
@@ -155,10 +155,17 @@ def _introot_gmpy2(n, r=2):
 
 
 def _invmod(a, m):
+    mod = m
     a, x, u = a % m, 0, 1
     while a:
         x, u, m, a = u, x - (m // a) * u, a, m % a
-    return x
+    if m != 1:
+        # Match gmpy2's contract: no inverse -> ZeroDivisionError, never
+        # a silently wrong value.
+        raise ZeroDivisionError("invert() no inverse exists")
+    # The extended-gcd walk can end on a negative Bezout coefficient;
+    # gmpy2.invert always returns the canonical residue in [0, mod).
+    return x % mod
 
 
 def _is_square(n):
@@ -185,7 +192,9 @@ def miller_rabin(n, k=40):
     for justification
     """
 
-    if n == 2:
+    if n < 2:
+        return False
+    if n in (2, 3):
         return True
     if (n & 1 == 0) or n % 3 == 0:
         return False
@@ -221,6 +230,15 @@ def _is_prime(n):
     If all the previous tests pass then we try with Rabin-Miller.
     All the tests are probabilistic.
     """
+    if n < 2:
+        return False
+    # The Fermat criterion degenerates for the small primes themselves:
+    # pow(b, n-1, n) == 0 when b == n, so 2, 3 and 5 must be accepted
+    # before any base-2/3/5 test runs.
+    if n in (2, 3, 5):
+        return True
+    if n & 1 == 0:
+        return False
     if all(
         (
             _fermat_prime_criterion(n),
@@ -256,6 +274,23 @@ def erathostenes_sieve(n):
 _primes = erathostenes_sieve
 
 
+def _primes_first(n):
+    """First n primes, pure-Python.
+
+    The gmpy binding of `primes()` means "first n primes" while the
+    fallback sieve meant "primes below n"; this fallback matches the gmpy
+    semantics so dixon/QS/pollard_P_1 factor bases are identical on both
+    backends.
+    """
+    if n <= 0:
+        return []
+    if n < 6:
+        return [2, 3, 5, 7, 11][:n]
+    # Rosser's theorem: the n-th prime is below n*(ln n + ln ln n) for n >= 6.
+    bound = int(n * (math.log(n) + math.log(math.log(n)))) + 10
+    return erathostenes_sieve(bound)[:n]
+
+
 def _primes_yield_gmpy(n):
     p = i = 1
     while i <= n:
@@ -267,7 +302,7 @@ def _primes_yield_gmpy(n):
 def _fib(n):
     a, b = 0, 1
     i = 0
-    while i <= n:
+    while i < n:
         a, b = b, a + b
         i += 1
     return a
@@ -275,11 +310,11 @@ def _fib(n):
 
 def ilogb(x, b):
     """
-    greatest integer l such that b**l  < = x.
+    greatest integer l such that b**l <= x (exact integer arithmetic).
     """
     log_count = 0
     while x >= b:
-        x /= b
+        x //= b
         log_count += 1
     return log_count
 
@@ -333,13 +368,9 @@ def _is_congruent(a, b, m):
 
 
 def _powmod(b, e, m):
-    r = 1
-    b %= m
-    while e > 0:
-        r = ((r * b) % m) * (e & 1) + r * ((e + 1) & 1)
-        e >>= 1
-        b = (b * b) % m
-    return r
+    # Three-arg pow also handles negative exponents via the modular
+    # inverse, matching gmpy2.powmod on both counts.
+    return pow(b, e, m)
 
 
 def _fac(n):
@@ -352,13 +383,11 @@ def _fac(n):
     return tmp
 
 
-@cache
 def _lucas(n):
-    if n == 0:
-        return 2
-    if n == 1:
-        return 1
-    return _lucas(n - 1) + _lucas(n - 2)
+    a, b = 2, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
 
 
 if gmpy_version > 0:
@@ -415,6 +444,7 @@ if gmpy_version > 0:
 
     isqrt = gmpy.isqrt
 else:
+    primes = _primes_first
     remove = _remove
     iroot = _iroot
     gcd = _gcd
@@ -506,13 +536,16 @@ def common_modulus_related_message(e1, e2, n, c1, c2):
 
     g, a, b = gcdext(e1, e2)
 
-    if g == 1:
-        return None
-
     c1 = neg_pow(c1, a, n) if a < 0 else powmod(c1, a, n)
     c2 = neg_pow(c2, b, n) if b < 0 else powmod(c2, b, n)
     ct = c1 * c2 % n
-    return int(introot(ct, g))
+    if g == 1:
+        return ct
+    # The Bezout combination yields m^g mod n; only when m^g < n does the
+    # integer g-th root recover m. A truncated root of a wrapped value is
+    # garbage - reject it with an exact round-trip check.
+    root = int(introot(ct, g))
+    return root if pow(root, g) == ct else None
 
 
 def phi(n, factors):
@@ -528,12 +561,29 @@ def phi(n, factors):
             y *= p - 1
             n, _ = remove(n, p)
     if n > 1:
-        y //= n
-        y *= n - 1
+        if is_prime(n):
+            y //= n
+            y *= n - 1
+        else:
+            # A composite residual means `factors` missed a divisor;
+            # multiplying (n-1)/n as if it were prime returns a silently
+            # wrong totient.
+            raise ValueError(
+                "phi() got an incomplete factorisation: residual %d is composite" % n
+            )
     return y
 
 
 def chinese_remainder(m, a):
+    # The classic product formula requires pairwise coprime moduli; with
+    # gmpy a non-invertible Ni silently becomes 0 and yields a wrong
+    # residue, so reject the input instead.
+    for i, mi in enumerate(m):
+        for mj in m[i + 1:]:
+            if gcd(mi, mj) != 1:
+                raise ValueError(
+                    "chinese_remainder: moduli must be pairwise coprime"
+                )
     S = 0
     N = list_prod(m)
     for mi, ai in zip(m, a):
@@ -630,27 +680,38 @@ def convergents_from_contfrac(frac, progress=False):
 
 def inv_mod_pow_of_2(factor, bit_count):
     """
-    its orders of magnitude faster than invert(a, 2^k)
-    code borrowed from:  https://algassert.com/post/1709
+    Inverse of an odd factor modulo 2**bit_count via Newton iteration
+    x <- x * (2 - factor*x); precision doubles each round, so this stays
+    faster than a generic extended-gcd invert.
     """
-    rest = factor & -2
-    acc = 1
-    for i in range(bit_count):
-        acc -= (acc & (1 << i)) * (rest << i)
-    mask = (1 << bit_count) - 1
-    return acc & mask
+    if not factor & 1:
+        raise ValueError("factor must be odd")
+    m = 1 << bit_count
+    factor %= m
+    acc = 1  # exact inverse modulo 2
+    t = 1
+    while t < bit_count:
+        t = min(bit_count, t << 1)
+        acc = (acc * (2 - factor * acc)) % (1 << t)
+    return acc % m
 
 
 def mlucas(v, a, n):
-    """Helper function for williams_pp1().  Multiplies along a Lucas sequence modulo n."""
-    v1, v2 = v, (v * v - 2) % n
-    while a > 0:
-        v1, v2 = (
-            ((v1 * v1 - 2) % n, (v1 * v2 - v) % n)
-            if a & 1 == 0
-            else ((v1 * v2 - v) % n, (v2 * v2 - 2) % n)
-        )
-        a >>= 1
+    """Multiply along a Lucas sequence modulo n.
+
+    Given v = V_m(P), returns V_{m*a}(P).  The Chebyshev composition law
+    V_m(V_a(x)) = V_{m*a}(x) makes this equally readable as advancing the
+    index by a or composing parameters, which is what williams_pp1() relies
+    on when it iterates v <- mlucas(v, p, n) to reach V_{seed * p^e}.
+    MSB-first binary chain keeping (V_{m*t}, V_{m*t+m}) alive; the identity
+    V_{r+s} = V_r*V_s - V_{r-s} with r-s = m supplies the cross term.
+    """
+    v1, v2 = v, (v * v - 2) % n  # t = 1: V_m, V_2m
+    for bit in bin(a)[3:]:
+        if bit == "0":
+            v1, v2 = (v1 * v1 - 2) % n, (v1 * v2 - v) % n
+        else:
+            v1, v2 = (v1 * v2 - v) % n, (v2 * v2 - 2) % n
     return v1
 
 
@@ -659,12 +720,14 @@ def is_lucas(n):
     True if n is a Lucas number (A000032).
     """
 
-    def sign(n):
-        return 1 if n > 0 else -1
-
     u1, u2 = 1, 3
+    if n <= 0:
+        return False
     if n <= 2:
-        return sign(n)
+        # 1 and 2 are both Lucas numbers (L_1 = 1, L_0 = 2); the old
+        # sign() path returned the int +/-1, which is truthy even for
+        # non-Lucas and negative inputs.
+        return True
     else:
         while n > u2:
             old_u1, u1 = u1, u2
@@ -672,70 +735,57 @@ def is_lucas(n):
     return u2 == n
 
 
-def find_period(n):
-    shifted = n
-    num_bits = n.bit_length()
-    mask = (1 << num_bits) - 1
-    for period in range(1, num_bits):
-        shifted >>= 1
-        mask >>= 1
-        if ((n ^ shifted) & mask) == 0:
-            return period
-    return -1
-
-
 __all__ = [
-    getpubkeysz,
-    gcd,
-    isqrt,
-    introot,
-    invmod,
-    gcdext,
-    is_square,
-    is_cube,
-    next_prime,
-    is_prime,
-    fib,
-    primes,
-    lcm,
-    invert,
-    powmod,
-    ilog2,
-    ilog,
-    ilog10,
-    mod,
-    log,
-    log2,
-    log10,
-    trivial_factorization_with_n_phi,
-    factor_ned,
-    neg_pow,
-    common_modulus_related_message,
-    phi,
-    list_prod,
-    chinese_remainder,
-    ilogb,
-    mul,
-    cuberoot,
-    isqrt_rem,
-    is_divisible,
-    is_congruent,
-    iroot,
-    dlp_bruteforce,
-    fac,
-    rational_to_contfrac,
-    contfrac_to_rational,
-    convergents_from_contfrac,
-    fdivmod,
-    inv_mod_pow_of_2,
-    mlucas,
-    lucas,
-    mulmod,
-    A000265,
-    powmod_base_list,
-    powmod_exp_list,
-    is_pow2,
-    is_lucas,
-    find_period,
-    gmpy_version,
+    "getpubkeysz",
+    "gcd",
+    "isqrt",
+    "introot",
+    "invmod",
+    "gcdext",
+    "is_square",
+    "is_cube",
+    "next_prime",
+    "is_prime",
+    "fib",
+    "primes",
+    "lcm",
+    "invert",
+    "powmod",
+    "ilog2",
+    "ilog",
+    "ilog10",
+    "mod",
+    "log",
+    "log2",
+    "log10",
+    "trivial_factorization_with_n_phi",
+    "factor_ned",
+    "neg_pow",
+    "common_modulus_related_message",
+    "phi",
+    "list_prod",
+    "chinese_remainder",
+    "ilogb",
+    "mul",
+    "cuberoot",
+    "isqrt_rem",
+    "is_divisible",
+    "is_congruent",
+    "iroot",
+    "dlp_bruteforce",
+    "fac",
+    "rational_to_contfrac",
+    "contfrac_to_rational",
+    "convergents_from_contfrac",
+    "fdivmod",
+    "inv_mod_pow_of_2",
+    "mlucas",
+    "lucas",
+    "mulmod",
+    "A000265",
+    "powmod_base_list",
+    "powmod_exp_list",
+    "is_pow2",
+    "is_lucas",
+    "gmpy_version",
 ]

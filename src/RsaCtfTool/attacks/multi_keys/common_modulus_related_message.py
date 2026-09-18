@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import itertools
+import logging
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack
 from RsaCtfTool.lib.number_theory import common_modulus_related_message
 from RsaCtfTool.lib.crypto_wrapper import long_to_bytes, bytes_to_long
@@ -20,6 +21,8 @@ class Attack(AbstractAttack):
         c2 = bytes_to_long(c2)
 
         decrypted_message = common_modulus_related_message(k1.e, k2.e, k1.n, c1, c2)
+        if decrypted_message is None:
+            return None
         return long_to_bytes(decrypted_message)
 
     def attack(self, publickeys, cipher=[]):
@@ -35,10 +38,10 @@ class Attack(AbstractAttack):
                 self.common_modulus_related_message_attack(c1, c2, k1, k2)
                 for c1, c2 in itertools.combinations(cipher, 2)
             )
-        if all(_ is None for _ in plains):
-            plains = None
-
-        return (None, plains)
+        # Key pairs with different moduli contribute None; keep only real
+        # plaintexts so the result printer never sees a None entry.
+        plains = [p for p in plains if p is not None]
+        return (None, plains if plains else None)
 
     def test(self):
         from RsaCtfTool.lib.keys_wrapper import PublicKey
@@ -63,7 +66,7 @@ class Attack(AbstractAttack):
         cipher2 = base64.b64decode(
             "jmVRiKyVPy1CHiYLl8fvpsDAhz8rDa/Ug87ZUXZ//rMBKfcJ5MqZnQbyTJZwSNASnQfgel3J/xJsjlnf8LoChzhgT28qSppjMfWtQvR6mar1GA0Ya1VRHkhggX1RUFA4uzL56X5voi0wZEpJITUXubbujDXHjlAfdLC7BvL/5+w="
         )
-        print("cypher decoded..")
+        logging.getLogger("global_logger").debug("cypher decoded..")
         result = self.attack(
             [PublicKey(key1_data), PublicKey(key2_data)],
             [
@@ -71,5 +74,5 @@ class Attack(AbstractAttack):
                 cipher2,
             ],
         )
-        print(result)
+        logging.getLogger("global_logger").debug("result: %r", result)
         return result != (None, None)

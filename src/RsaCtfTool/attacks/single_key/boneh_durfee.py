@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from RsaCtfTool.attacks.abstract_attack import AbstractAttack
+from RsaCtfTool.attacks.abstract_attack import AbstractAttack, SAGE_MIN_TIMEOUT
 import subprocess
 from RsaCtfTool.lib.crypto_wrapper import RSA
 from RsaCtfTool.lib.keys_wrapper import PrivateKey
@@ -10,9 +10,10 @@ from RsaCtfTool.lib.utils import rootpath
 
 class Attack(AbstractAttack):
     def __init__(self, timeout=60):
-        super().__init__(timeout)
+        super().__init__(max(timeout, SAGE_MIN_TIMEOUT))
         self.speed = AbstractAttack.speed_enum["medium"]
         self.required_binaries = ["sage"]
+        self.required_scripts = ["sage/boneh_durfee.sage"]
 
     def attack(self, publickey, cipher=[], progress=True):
         """Use boneh durfee method, should return a d value, else returns 0
@@ -20,7 +21,7 @@ class Attack(AbstractAttack):
         many of these problems will be solved by the wiener attack module but perhaps some will fall through to here
         """
         try:
-            sageresult = int(
+            sageresult = (
                 subprocess.check_output(
                     [
                         "sage",
@@ -31,11 +32,35 @@ class Attack(AbstractAttack):
                     timeout=self.timeout,
                     stderr=subprocess.DEVNULL,
                 )
+                .decode("utf8")
+                .rstrip()
             )
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            ValueError,
+        ):
             return (None, None)
-        if sageresult > 0:
-            tmp_priv = RSA.construct((int(publickey.n), int(publickey.e), sageresult))
+        # The script prints one candidate d per line (0 = failure); the
+        # first lattice root is not always the right one, so validate each
+        # candidate with RSA.construct until one is consistent.
+        for line in sageresult.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d_candidate = int(line)
+            except ValueError:
+                continue
+            if d_candidate <= 0:
+                continue
+            try:
+                tmp_priv = RSA.construct(
+                    (int(publickey.n), int(publickey.e), d_candidate)
+                )
+            except ValueError:
+                # A positive but inconsistent candidate d; keep looking.
+                continue
             publickey.p = tmp_priv.p
             publickey.q = tmp_priv.q
             privatekey = PrivateKey(

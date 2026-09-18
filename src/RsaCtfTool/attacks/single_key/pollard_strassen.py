@@ -15,7 +15,10 @@ class Attack(AbstractAttack):
     def attack(self, publickey, cipher=[], progress=True):
         """Run pollard_strassen attack with a timeout"""
         try:
-            publickey.p, publickey.q = pollard_strassen(publickey.n)
+            r = pollard_strassen(publickey.n)
+            if r is None:
+                return None, None
+            publickey.p, publickey.q = r
         except FactorizationError:
             return None, None
 

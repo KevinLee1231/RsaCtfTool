@@ -15,6 +15,8 @@ class Attack(AbstractAttack):
         """Run strong_pseudoprime attack with a timeout"""
         try:
             r = strong_pseudoprime(publickey.n)
+            if r is None:
+                return None, None
             publickey.p, publickey.q = r
 
         except FactorizationError:
@@ -24,10 +26,9 @@ class Attack(AbstractAttack):
         return self.create_private_key(publickey)
 
     def test(self):
+        from RsaCtfTool.lib.crypto_wrapper import RSA
         from RsaCtfTool.lib.keys_wrapper import PublicKey
 
-        key_data = """-----BEGIN PUBLIC KEY-----
-MB8wDQYJKoZIhvcNAQEBBQADDgCwCwIEALpqqQIDAQAB
------END PUBLIC KEY-----"""
+        key_data = RSA.construct((13 * 31, 17)).publickey().exportKey()
         result = self.attack(PublicKey(key_data), progress=False)
         return result != (None, None)

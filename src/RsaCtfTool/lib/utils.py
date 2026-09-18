@@ -26,8 +26,15 @@ def get_numeric_value(value):
 
 
 def get_base64_value(value):
-    """Parse input (hex or numerical)"""
+    """Decode base64 input; pass anything else through unchanged.
+
+    The round-trip check compares b64encode's bytes output against the
+    input, so string input must be encoded first - comparing bytes to str
+    never matches and base64 strings used to pass through undecoded.
+    """
     try:
+        if isinstance(value, str):
+            value = value.encode()
         if base64.b64encode(d := base64.b64decode(value)) == value:
             return d
         else:
@@ -90,14 +97,23 @@ def _print_dumpkey_private(args, private_keys, logger):
         if priv_key.q is not None:
             logger.info(f"q: {str(priv_key.q)}")
         if args.ext:
-            dp = priv_key.d % (priv_key.p - 1)
-            dq = priv_key.d % (priv_key.q - 1)
-            pinv = invmod(priv_key.p, priv_key.q)
-            qinv = invmod(priv_key.q, priv_key.p)
-            logger.info(f"dp: {str(dp)}")
-            logger.info(f"dq: {str(dq)}")
-            logger.info(f"pinv: {str(pinv)}")
-            logger.info(f"qinv: {str(qinv)}")
+            if (
+                priv_key.d is not None
+                and priv_key.p is not None
+                and priv_key.q is not None
+            ):
+                dp = priv_key.d % (priv_key.p - 1)
+                dq = priv_key.d % (priv_key.q - 1)
+                logger.info(f"dp: {str(dp)}")
+                logger.info(f"dq: {str(dq)}")
+                try:
+                    pinv = invmod(priv_key.p, priv_key.q)
+                    qinv = invmod(priv_key.q, priv_key.p)
+                    logger.info(f"pinv: {str(pinv)}")
+                    logger.info(f"qinv: {str(qinv)}")
+                except (ZeroDivisionError, ValueError):
+                    # p == q (square modulus) has no CRT inverse.
+                    logger.info("pinv/qinv: undefined for p == q")
 
 
 def _print_dumpkey_public(args, publickey, logger):
@@ -130,9 +146,12 @@ def _print_decrypt_results(args, decrypt, logger):
                     logger.error(f"Can't write output file : {args.output}")
             print_decrypted_res(c, logger)
             if len(c) > 3 and c[0] == 0 and c[1] == 2:
-                nc = c[c[2:].index(0) + 2:]
-                logger.info("\nPKCS#1.5 padding decoded!")
-                print_decrypted_res(nc, logger)
+                with contextlib.suppress(ValueError):
+                    # Malformed data whose padding never reaches a 0
+                    # separator must not crash the result printer.
+                    nc = c[c[2:].index(0) + 2:]
+                    logger.info("\nPKCS#1.5 padding decoded!")
+                    print_decrypted_res(nc, logger)
 
 
 def print_results(args, publickey, private_key, decrypt):
@@ -171,7 +190,8 @@ class TimeoutError(Exception):
         return repr(self.value)
 
 
-DEFAULT_TIMEOUT_MESSAGE = os.strerror(errno.ETIME)
+# errno.ETIME is Linux-specific (absent on macOS); fall back to ETIMEDOUT.
+DEFAULT_TIMEOUT_MESSAGE = os.strerror(getattr(errno, "ETIME", errno.ETIMEDOUT))
 
 
 class timeout(contextlib.ContextDecorator):
@@ -186,12 +206,20 @@ class timeout(contextlib.ContextDecorator):
         self.timeout_message = timeout_message
         self.suppress = bool(suppress_timeout_errors)
         self.logger = logging.getLogger("global_logger")
+        self.timer = None
+        self._old_handler = None
 
     def _timeout_handler(self, _signum, _frame):
         self.logger.warning("[!] Timeout.")
         raise TimeoutError(self.timeout_message)
 
     def __enter__(self):
+        # The CLI help promises that values < 1 behave like MAX_INT, i.e.
+        # no timeout at all - never arm a negative-interval Timer that
+        # would fire immediately.
+        if self.seconds < 1:
+            return self
+        self._old_handler = signal.getsignal(signal.SIGTERM)
         signal.signal(signal.SIGTERM, self._timeout_handler)
 
         def alarm_func():  # send signal
@@ -201,9 +229,17 @@ class timeout(contextlib.ContextDecorator):
             self.seconds, alarm_func
         )  # this thread will send signal when timeout
         self.timer.start()
+        return self
 
     def __exit__(self, exc_type, _exc_val, _exc_tb):
-        self.timer.cancel()
+        if self.timer is not None:
+            self.timer.cancel()
+            self.timer = None
+        if self._old_handler is not None:
+            # Restore the previous handler so a later SIGTERM terminates
+            # the process instead of raising our TimeoutError forever.
+            signal.signal(signal.SIGTERM, self._old_handler)
+            self._old_handler = None
         if self.suppress and exc_type is TimeoutError:
             return True
 

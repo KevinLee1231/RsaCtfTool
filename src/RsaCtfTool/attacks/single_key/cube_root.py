@@ -11,7 +11,7 @@ class Attack(AbstractAttack):
 
     def attack(self, publickey, cipher=[], progress=True):
         """Try to decrypt c if m < n/e and small e"""
-        if publickey.e not in [3, 5]:
+        if publickey.e < 3 or publickey.e & 1 == 0:
             return None, None
         plain = []
         if (cipher is None) or (len(cipher) < 1):
@@ -29,7 +29,14 @@ class Attack(AbstractAttack):
                     low = mid + 1
                 else:
                     high = mid
+            # m^e was reduced mod n, so a non-perfect e-th root means the
+            # plaintext is not actually small: reporting it would be a
+            # bogus result that also stops the remaining attacks.
+            if pow(low, publickey.e) != cipher_int:
+                continue
             plain.append(low.to_bytes((low.bit_length() + 7) // 8, byteorder="big"))
+        if not plain:
+            return None, None
         return None, plain
 
     def test(self):

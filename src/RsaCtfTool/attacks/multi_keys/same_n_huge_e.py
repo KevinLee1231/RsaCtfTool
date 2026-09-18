@@ -3,7 +3,7 @@
 
 from RsaCtfTool.attacks.abstract_attack import AbstractAttack
 from RsaCtfTool.lib.crypto_wrapper import number
-from RsaCtfTool.lib.number_theory import gcdext, powmod
+from RsaCtfTool.lib.number_theory import gcdext, introot, powmod
 
 
 class Attack(AbstractAttack):
@@ -26,14 +26,27 @@ class Attack(AbstractAttack):
                 )
                 return (None, None)
 
-            # e1*s1 + e2*s2 = 1
-            _, s1, s2 = gcdext(e_array[0], e_array[1])
-
-            # m ≡ c1^s1 * c2*s2 mod n
+            # e1*s1 + e2*s2 = gcd(e1,e2); call it g.  The Bezout
+            # combination therefore yields m^g, not m.  For g == 1 that is
+            # exactly the message; otherwise only a small message
+            # (m^g < n) stays recoverable, via the integer g-th root plus
+            # an exact round-trip check.
+            g, s1, s2 = gcdext(e_array[0], e_array[1])
             cipher_bytes = [int.from_bytes(c, "big") for c in cipher]
-            plain = (
+            combined = (
                 powmod(cipher_bytes[0], s1, n) * powmod(cipher_bytes[1], s2, n)
             ) % n
+
+            if g == 1:
+                plain = combined
+            else:
+                plain = introot(combined, g)
+                if plain is None or pow(plain, g) != combined:
+                    self.logger.warning(
+                        "[!] gcd(e1,e2)=%d > 1 and m^%d >= n; recovering m "
+                        "would require factoring n." % (g, g)
+                    )
+                    return (None, None)
 
             return None, number.long_to_bytes(plain)
 

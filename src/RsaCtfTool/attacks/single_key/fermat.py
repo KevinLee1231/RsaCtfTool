@@ -14,7 +14,10 @@ class Attack(AbstractAttack):
     def attack(self, publickey, cipher=[], progress=True):
         """Run fermat attack with a timeout"""
         try:
-            publickey.p, publickey.q = fermat(publickey.n)
+            r = fermat(publickey.n)
+            if r is None:
+                return None, None
+            publickey.p, publickey.q = r
         except FactorizationError:
             self.logger.error("N should not be a 4k+2 number...")
             return None, None

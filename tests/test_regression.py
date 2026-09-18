@@ -200,3 +200,64 @@ def test_cli_private_n_eq_p_squared_no_crash():
             result.stdout,
         )
     )
+
+
+def test_cli_dump_public_key_single_path():
+    """--dumpkey must treat one --publickey path as one file, not characters."""
+    examples = os.path.join(os.path.dirname(__file__), "..", "examples")
+    pub = os.path.join(examples, "small_q.pub")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "RsaCtfTool.main",
+            "--publickey",
+            pub,
+            "--dumpkey",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    combined = result.stdout + result.stderr
+    assert result.returncode == 0, combined
+    assert "Traceback" not in combined
+    assert "n:" in combined
+    assert "e:" in combined
+
+
+def test_cli_conspicuous_check_loads_private_key_file():
+    """--isconspicuous must inspect the key passed through --key."""
+    examples = os.path.join(os.path.dirname(__file__), "..", "examples")
+    private_key = os.path.join(examples, "conspicuous.priv")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "RsaCtfTool.main",
+            "--key",
+            private_key,
+            "--isconspicuous",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    combined = result.stdout + result.stderr
+    assert result.returncode == 255, combined
+    assert "Traceback" not in combined
+    assert "conspicuous" in combined.lower()
+
+
+def test_private_key_file_load_restores_public_exponent():
+    """Loading a complete private key must populate its public exponent."""
+    examples = os.path.join(os.path.dirname(__file__), "..", "examples")
+    private_key = os.path.join(examples, "conspicuous.priv")
+
+    key = PrivateKey(filename=private_key)
+    assert key.e is not None
+    assert key.n is not None

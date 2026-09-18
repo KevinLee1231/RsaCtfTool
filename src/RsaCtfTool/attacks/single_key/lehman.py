@@ -15,6 +15,8 @@ class Attack(AbstractAttack):
         """Run lehman attack with a timeout"""
         try:
             r = lehman(publickey.n)
+            if r is None:
+                return None, None
             publickey.p, publickey.q = r
         except FactorizationError:
             self.logger.error("N should not be a 4k+2 number...")

@@ -141,11 +141,11 @@ def parse_args():
         sys.exit(1)
 
     # Dynamic load all attacks for choices in argparse
-    attacks = glob(
-        join(dirname(os.path.realpath(__file__)), "attacks", "single_key", "*.py")
+    attacks = sorted(
+        glob(join(dirname(os.path.realpath(__file__)), "attacks", "single_key", "*.py"))
     )
-    attacks += glob(
-        join(dirname(os.path.realpath(__file__)), "attacks", "multi_keys", "*.py")
+    attacks += sorted(
+        glob(join(dirname(os.path.realpath(__file__)), "attacks", "multi_keys", "*.py"))
     )
 
     attacks_filtered = [
@@ -198,7 +198,7 @@ def parse_args():
 
     parser.add_argument(
         "--show_modulus",
-        help="show tracebacks",
+        help="print the modulus when provided via -n",
         action="store_true",
     )
 
@@ -209,11 +209,20 @@ def parse_args():
 
 def run_conspicuous_check(args, logger):
     try:
-        pub_key, priv_key = generate_keys_from_p_q_e_n(args.p, args.q, args.e, args.n)
-    except ValueError:
-        logger.error(
-            "Looks like the values for generating key are not ok... (no invmod)"
-        )
+        if args.key is not None:
+            priv_key = PrivateKey(filename=args.key, password=args.password)
+        else:
+            _, priv_key = generate_keys_from_p_q_e_n(
+                args.p, args.q, args.e, args.n
+            )
+    except Exception as exc:
+        logger.error("Unable to load the private key: %s", exc)
+        return False
+    if priv_key is None or any(
+        value is None
+        for value in (priv_key.n, priv_key.p, priv_key.q, priv_key.d, priv_key.e)
+    ):
+        logger.error("A complete private key is required for conspicuousness checks.")
         return False
     c = priv_key.is_conspicuous()
     if c:
@@ -229,11 +238,12 @@ def run_attacks(args, logger):
     # Run tests
     if args.publickey is None and args.tests:
         if args.attack is not None:
-            if "," not in args.attack:
-                selected_attacks = args.attack
+            selected_attacks = args.attack
         if "all" in selected_attacks:
             selected_attacks = args.attacks_list
-        logger.info("Testing attacks: %d" % (len(selected_attacks)-1)) # Exclude "all"
+        logger.info(
+            "Testing attacks: %d" % len([a for a in selected_attacks if a != "all"])
+        )
 
         tmpfile = tempfile.NamedTemporaryFile()
         with open(tmpfile.name, "wb") as tmpfd:
@@ -250,6 +260,10 @@ def run_attacks(args, logger):
         for publickey in args.publickey:
             attackobj.implemented_attacks = []
             attackobj.decrypted = []
+            # Without this reset a private key recovered for an earlier
+            # key would be printed again as this key's result whenever
+            # every attack for this key is skipped (can_run preflight).
+            attackobj.priv_key = None
             logger.info("\n[*] Testing key %s." % publickey)
             attackobj.attack_single_key(publickey, selected_attacks)
     if args.publickey is None:
@@ -258,12 +272,6 @@ def run_attacks(args, logger):
             attackobj.attack_single_key(priv_key, selected_attacks)
         else:
             logger.error("No key specified")
-        if args.n is not None:
-            # FIXME
-            publickey, _privkey = generate_keys_from_p_q_e_n(
-                args.p, args.q, args.e, args.n
-            )
-            attackobj.attack_single_key(publickey, selected_attacks)
     return args
 
 
@@ -319,11 +327,16 @@ def load_keys(args, logger):
     tmpfile = None
     args.publickey = []
     for e in args.e if isinstance(args.e, list) else [args.e]:
+        try:
+            pub_pem = RSA.construct((args.n, e)).publickey().exportKey()
+        except ValueError:
+            logger.error(
+                "[!] Cannot build a public key from the given n and e (e must be odd, > 1 and < n)."
+            )
+            sys.exit(1)
         tmpfile = tempfile.NamedTemporaryFile(delete=False)
         with open(tmpfile.name, "wb") as tmpfd:
-            tmpfd.write(
-                RSA.construct((args.n, e)).publickey().exportKey(),
-            )
+            tmpfd.write(pub_pem)
         args.publickey.append(tmpfile.name)
     return args
 
@@ -392,7 +405,16 @@ def decrypt_file(args, logger):
 
 
 def pubkey_detail(args, logger):
-    for publickey in args.publickey:
+    publickeys = args.publickey
+    if isinstance(publickeys, str):
+        if "*" in publickeys or "?" in publickeys:
+            publickeys = glob(publickeys)
+        elif "," in publickeys:
+            publickeys = publickeys.split(",")
+        else:
+            publickeys = [publickeys]
+
+    for publickey in publickeys:
         logger.info(f"Details for {publickey}:")
         with open(publickey, "rb") as key_data_fd:
             key = RSA.importKey(key_data_fd.read())
@@ -401,12 +423,16 @@ def pubkey_detail(args, logger):
 
 
 def cleanup(args):
+    # Only remove files load_keys() created this run; those always live in
+    # the system temp directory, so anchoring on it avoids touching any
+    # user file that merely contains "tmp" in its name.
+    tmpdir = os.path.join(tempfile.gettempdir(), "")
     if args.publickey is not None:
         for pub in args.publickey:
             try:
-                if "tmp" in pub and "tmp/" not in pub:
+                if os.path.abspath(pub).startswith(tmpdir):
                     os.remove(pub)
-            except Exception:
+            except OSError:
                 continue
 
 
@@ -436,7 +462,10 @@ def _parse_numeric_args(args):
     if args.e is not None:
         e_array = [get_numeric_value(e) for e in args.e.split(",")]
         args.e = e_array if len(e_array) > 1 else e_array[0]
-    elif args.n is not None:
+    elif args.n is not None or (args.p is not None and args.q is not None):
+        # _compute_n_from_pq() derives n from p*q later, so cover that case
+        # here too; otherwise a bare "-p ... -q ..." invocation reaches
+        # key generation with e=None and crashes in RSA.construct.
         args.e = 65537
     return args
 
@@ -467,16 +496,20 @@ def _recover_pq_from_ned(args, logger):
         logger.warning("[!] Impossible to recover p and q from d")
 
 
-def _compute_other_prime(args):
+def _compute_other_prime(args, logger):
     if args.n and (args.p or args.q):
-        args.p, args.q = generate_pq_from_n_and_p_or_q(args.n, args.p, args.q)
+        try:
+            args.p, args.q = generate_pq_from_n_and_p_or_q(args.n, args.p, args.q)
+        except ValueError as exc:
+            logger.error(f"[!] {exc}")
+            sys.exit(1)
 
 
 def _compute_missing_values(args, logger):
     _warn_if_extra_primes(args, logger)
     _compute_n_from_pq(args)
     _recover_pq_from_ned(args, logger)
-    _compute_other_prime(args)
+    _compute_other_prime(args, logger)
     return args
 
 
@@ -485,10 +518,12 @@ def _handle_decrypt_input(args, logger):
         decrypt_array = []
         for decrypt in args.decrypt.split(","):
             try:
-                decrypt = get_numeric_value(decrypt)
+                decrypt = n2s(get_numeric_value(decrypt))
             except Exception:
+                # Not a number: n2s only accepts ints, so base64-decoded
+                # bytes must skip it and go straight into the array.
                 decrypt = get_base64_value(decrypt)
-            decrypt_array.append(n2s(decrypt))
+            decrypt_array.append(decrypt)
         args.decrypt = decrypt_array
     if args.decryptfile is not None:
         if not decrypt_file(args, logger):
@@ -509,7 +544,6 @@ def _handle_early_exit_modes(args, logger):
         sys.exit(0)
     if (
         args.dumpkey
-        and not args.private
         and args.decrypt is None
         and args.decryptfile is None
         and args.publickey is not None
@@ -519,7 +553,7 @@ def _handle_early_exit_modes(args, logger):
     if args.key is not None and args.dumpkey:
         dump_key_parameters(args)
         sys.exit(0)
-    if args.key is not None and args.isconspicuous:
+    if args.isconspicuous:
         if run_conspicuous_check(args, logger):
             sys.exit(-1)
         sys.exit(0)
@@ -562,17 +596,21 @@ def _handle_fully_specified_key(args, logger):
         print(pub_key.decode("utf-8"))
 
     if args.decrypt is not None:
-        for u in args.decrypt:
-            if priv_key is not None:
-                decrypts.append(priv_key.decrypt(args.decrypt))
-            else:
-                logger.error(
-                    "Looks like the values for generating key are not ok... (no invmod)"
-                )
-                sys.exit(1)
-    print_results(args, args.publickey[0], priv_key, decrypts)
+        if priv_key is not None:
+            decrypts = priv_key.decrypt(args.decrypt)
+            if not isinstance(decrypts, list):
+                decrypts = [decrypts]
+        else:
+            logger.error(
+                "Looks like the values for generating key are not ok... (no invmod)"
+            )
+            sys.exit(1)
+    if isinstance(args.publickey, list):
+        pubkey_name = args.publickey[0] if args.publickey else None
+    else:
+        pubkey_name = args.publickey
+    print_results(args, pubkey_name, priv_key, decrypts)
     sys.exit(0)
-    return decrypts
 
 
 def main():
@@ -585,8 +623,11 @@ def main():
     if _handle_early_exit_modes(args, logger):
         return
 
-    args = _load_public_keys(args)
+    # Fully specified p/q/e/n short-circuits before any key files are
+    # generated, so an invalid combination (e.g. e > n on toy moduli)
+    # fails cleanly here instead of crashing inside load_keys.
     _handle_fully_specified_key(args, logger)
+    args = _load_public_keys(args)
     args = run_attacks(args, logger)
 
     if args.cleanup:
