@@ -110,7 +110,7 @@ class AbstractAttack(object):
                     # are not a valid split of n - do not hand back a key.
                     return None, None
                 return priv_key, None
-            except ValueError:
+            except (ValueError, TypeError):
                 return None, None
         return None, None
 
