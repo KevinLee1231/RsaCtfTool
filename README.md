@@ -63,7 +63,7 @@ docker run -it --rm -v $PWD:/data rsactftool/rsactftool <arguments>
 ### Non-Factorization Attacks
 
 - [Wiener's attack](https://en.wikipedia.org/wiki/Wiener%27s_attack)
-- [Hastad's attack](https://en.wikipedia.org/wiki/Hastad%27s_broadcasting_attack) (small public exponent)
+- [Hastad's attack](https://en.wikipedia.org/wiki/Coppersmith%27s_attack#H%C3%A5stad's_broadcast_attack) (small public exponent)
 - [Boneh-Durfee](https://staff.emu.edu.tr/alexanderchefranov/Documents/CMSE491/Fall2019/BonehIEEETIT2000%20Cryptanalysis%20of%20RSA.pdf) (small private exponent d < n^0.292)
 - Same n, huge e
 - [Small CRT exponent](https://en.wikipedia.org/wiki/Chinese_remainder_theorem)
